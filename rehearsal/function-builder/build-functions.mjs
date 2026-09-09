@@ -109,7 +109,10 @@ export function compilerOptions(source, output) {
     manifest: join(output, 'zisi-observations.json'),
     // ZISI 15.5.1 forces NFT for API v2. Its NFT transformer still uses
     // esbuild for local-import bundling/transpilation, then traces packages.
-    config: { '*': { nodeBundler: 'nft', nodeVersion: '24.x', nodeModuleFormat: 'esm', nodeSourcemap: false, externalNodeModules: [], ignoredNodeModules: [], includedFiles: [] } },
+    // NFT derives the archive root from traced AND included file directories.
+    // Include only our generated root metadata to fix that root at source,
+    // including for functions whose local imports were entirely bundled.
+    config: { '*': { nodeBundler: 'nft', nodeVersion: '24.x', nodeModuleFormat: 'esm', nodeSourcemap: false, externalNodeModules: [], ignoredNodeModules: [], includedFiles: ['package.json'], includedFilesBasePath: source } },
   };
 }
 
@@ -229,8 +232,15 @@ export async function buildFunctions({ source, inputManifest, output, toolchain 
     if (JSON.stringify(sorted(await fs.readdir(destination))) !== JSON.stringify(FUNCTIONS)) fail('OUTPUT_SET');
     const outputFiles = await inventory(destination);
     for (const name of FUNCTIONS) {
-      for (const path of ['___netlify-entry-point.mjs', '___netlify-bootstrap.mjs', `netlify/functions/${name}.mjs`]) {
-        if (!outputFiles.some((file) => file.path === `${name}/${path}`)) fail('OUTPUT_HANDLER');
+      for (const [component, path] of [['entry', '___netlify-entry-point.mjs'], ['bootstrap', '___netlify-bootstrap.mjs'], ['application', `netlify/functions/${name}.mjs`]]) {
+        if (!outputFiles.some((file) => file.path === `${name}/${path}`)) {
+          throw new Error(JSON.stringify({ code: 'CNYOS_CANDIDATE_OUTPUT_HANDLER', function: name, component,
+            rootApplicationPresent: outputFiles.some((file) => file.path === `${name}/${name}.mjs`) }));
+        }
+      }
+      const packageFile = outputFiles.find((file) => file.path === `${name}/package.json`);
+      if (!packageFile || packageFile.sha256 !== hash(generated['package.json'])) {
+        throw new Error(JSON.stringify({ code: 'CNYOS_CANDIDATE_OUTPUT_GENERATED_CONFIG', function: name, component: 'package.json' }));
       }
     }
     // Recheck copied inputs after compilation. This is byte association, not
