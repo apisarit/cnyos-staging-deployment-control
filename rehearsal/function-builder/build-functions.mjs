@@ -5,7 +5,7 @@
 import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { dirname, join, resolve, isAbsolute, sep } from 'node:path';
+import { basename, dirname, join, resolve, isAbsolute, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const FUNCTIONS = Object.freeze([
@@ -27,8 +27,8 @@ async function directory(path) {
   return path;
 }
 
-async function readRegular(path, maximum = 16 * 1024 * 1024) {
-  if (await fs.realpath(path) !== path) fail('FILE_PATH');
+async function readRegular(path, maximum = 16 * 1024 * 1024, stage = 'input-or-metadata') {
+  if (await fs.realpath(path) !== path) throw new Error(JSON.stringify({ code: 'CNYOS_CANDIDATE_FILE_PATH', stage }));
   const before = await fs.lstat(path, { bigint: true });
   if (!before.isFile() || before.nlink !== 1n || before.size > BigInt(maximum) || (before.mode & 0o7022n)) fail('FILE_TYPE_MODE_OR_SIZE');
   const handle = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -44,6 +44,49 @@ async function readRegular(path, maximum = 16 * 1024 * 1024) {
     if (offset !== Number(before.size) || !same(before, await handle.stat({ bigint: true })) || !same(before, await fs.lstat(path, { bigint: true }))) fail('FILE_CHANGED');
     return buffer.subarray(0, offset);
   } finally { await handle.close(); }
+}
+
+export async function materializeDependencies(source, destination) {
+  // NFT traces filesystem links and ZISI preserves their original targets.
+  // Copy the pinned, read-only installed tree instead of linking across roots.
+  // This is byte materialization, not package installation or import execution.
+  await directory(source);
+  if (!isAbsolute(destination) || resolve(destination) !== destination || inside(source, destination) || inside(destination, source)) fail('DEPENDENCY_DESTINATION');
+  await directory(dirname(destination));
+  let entries = 0;
+  let total = 0;
+  async function visit(from, to) {
+    await directory(from);
+    await fs.mkdir(to, { mode: 0o700 });
+    const reader = await fs.opendir(from);
+    for await (const item of reader) {
+      if (++entries > 50000 || !/^[A-Za-z0-9_.@+-]+$/.test(item.name) || item.name === '.' || item.name === '..') fail('DEPENDENCY_ENTRY');
+      const input = join(from, item.name);
+      // Omit only npm's verified Unix command-shim directories at dependency
+      // boundaries. An application package's ordinary data/.bin is not omitted.
+      if (basename(from) === 'node_modules' && item.name === '.bin') {
+        await directory(input);
+        const shims = await fs.opendir(input);
+        for await (const shim of shims) {
+          if (++entries > 50000 || !/^[A-Za-z0-9_.+-]+$/.test(shim.name)) fail('DEPENDENCY_SHIM');
+          const shimPath = join(input, shim.name);
+          const status = await fs.lstat(shimPath);
+          const target = await fs.realpath(shimPath);
+          if (!status.isSymbolicLink() || !inside(source, target) || !(await fs.lstat(target)).isFile()) fail('DEPENDENCY_SHIM');
+        }
+        continue;
+      }
+      const status = await fs.lstat(input, { bigint: true });
+      if (status.isDirectory()) await visit(input, join(to, item.name));
+      else {
+        const bytes = await readRegular(input, 32 * 1024 * 1024, 'dependency-materialization');
+        total += bytes.length;
+        if (total > 384 * 1024 * 1024) fail('DEPENDENCY_SIZE');
+        await fs.writeFile(join(to, item.name), bytes, { flag: 'wx', mode: (status.mode & 0o111n) ? 0o700 : 0o600 });
+      }
+    }
+  }
+  await visit(source, destination);
 }
 
 export function parseInputManifest(bytes) {
@@ -126,7 +169,7 @@ async function inventory(root) {
       const name = prefix ? `${prefix}/${item.name}` : item.name;
       if (item.isDirectory()) await visit(absolute, name);
       else {
-        const bytes = await readRegular(absolute);
+        const bytes = await readRegular(absolute, 16 * 1024 * 1024, 'function-output-inventory');
         total += bytes.length;
         if (total > 256 * 1024 * 1024) fail('OUTPUT_SIZE');
         files.push({ path: name, size: bytes.length, sha256: hash(bytes) });
@@ -176,8 +219,7 @@ export async function buildFunctions({ source, inputManifest, output, toolchain 
       'tsconfig.json': `${JSON.stringify({ compilerOptions: { target: 'ES2024', module: 'NodeNext', moduleResolution: 'NodeNext' } })}\n`,
     };
     for (const [path, bytes] of Object.entries(generated)) await fs.writeFile(join(workspace, path), bytes, { flag: 'wx', mode: 0o600 });
-    await directory(join(toolchain, 'node_modules'));
-    await fs.symlink(join(toolchain, 'node_modules'), join(workspace, 'node_modules'), 'dir');
+    await materializeDependencies(join(toolchain, 'node_modules'), join(workspace, 'node_modules'));
     const zipFunctions = compiler ?? await installedCompiler(toolchain);
     const results = await zipFunctions(join(workspace, 'netlify/functions'), destination, compilerOptions(workspace, output));
     if (!Array.isArray(results) || results.length !== FUNCTIONS.length || JSON.stringify(sorted(results.map((entry) => entry.name))) !== JSON.stringify(FUNCTIONS)) fail('FUNCTION_SET');
@@ -193,7 +235,7 @@ export async function buildFunctions({ source, inputManifest, output, toolchain 
     }
     // Recheck copied inputs after compilation. This is byte association, not
     // proof that declaredGitCommit was independently fetched/authenticated.
-    for (const file of manifest.files) if (hash(await readRegular(join(workspace, file.path))) !== file.sha256) fail('COPIED_SOURCE_CHANGED');
+    for (const file of manifest.files) if (hash(await readRegular(join(workspace, file.path), 16 * 1024 * 1024, 'copied-source-recheck')) !== file.sha256) fail('COPIED_SOURCE_CHANGED');
     if (hash(await readRegular(join(toolchain, 'package-lock.json'), 1024 * 1024)) !== LOCK_SHA256) fail('LOCK_CHANGED');
     observation = {
       schema: 'cnyos-candidate-function-build-observation/v1',
