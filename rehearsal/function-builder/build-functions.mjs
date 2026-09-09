@@ -64,8 +64,35 @@ export function compilerOptions(source, output) {
     archiveFormat: 'none', basePath: source, repositoryRoot: source,
     configFileDirectories: [], parallelLimit: 1,
     manifest: join(output, 'zisi-observations.json'),
-    config: { '*': { nodeBundler: 'esbuild', nodeVersion: '24.x', nodeModuleFormat: 'esm', nodeSourcemap: false, externalNodeModules: [], ignoredNodeModules: [], includedFiles: [] } },
+    // ZISI 15.5.1 forces NFT for API v2. Its NFT transformer still uses
+    // esbuild for local-import bundling/transpilation, then traces packages.
+    config: { '*': { nodeBundler: 'nft', nodeVersion: '24.x', nodeModuleFormat: 'esm', nodeSourcemap: false, externalNodeModules: [], ignoredNodeModules: [], includedFiles: [] } },
   };
+}
+
+export function assertCompilerResult(result, workspace, destination) {
+  const checks = {
+    path: result.path === join(destination, result.name),
+    mainFile: result.mainFile === join(workspace, 'netlify/functions', `${result.name}.mts`),
+    runtime: result.runtime === 'js',
+    bundler: result.bundler === 'nft',
+    runtimeVersion: result.runtimeVersion === 'nodejs24.x',
+    runtimeAPIVersion: result.runtimeAPIVersion === 2,
+    entryFilename: result.entryFilename === '___netlify-entry-point.mjs',
+    bundlerErrors: !(result.bundlerErrors?.length ?? 0),
+    bundlerWarnings: !(result.bundlerWarnings?.length ?? 0),
+    nativeNodeModules: Object.keys(result.nativeNodeModules ?? {}).length === 0,
+  };
+  const fields = Object.keys(checks).filter((name) => !checks[name]);
+  if (fields.length) {
+    // Closed names only; never emit returned paths, source, warning text or
+    // other compiler-controlled values. One bounded JSON line at the CLI.
+    throw new Error(JSON.stringify({
+      code: 'CNYOS_CANDIDATE_COMPILER_RESULT',
+      function: FUNCTIONS.includes(result.name) ? result.name : 'unknown',
+      fields,
+    }));
+  }
 }
 
 export function assertExecutionEnvironment() {
@@ -155,7 +182,7 @@ export async function buildFunctions({ source, inputManifest, output, toolchain 
     const results = await zipFunctions(join(workspace, 'netlify/functions'), destination, compilerOptions(workspace, output));
     if (!Array.isArray(results) || results.length !== FUNCTIONS.length || JSON.stringify(sorted(results.map((entry) => entry.name))) !== JSON.stringify(FUNCTIONS)) fail('FUNCTION_SET');
     for (const result of results) {
-      if (result.path !== join(destination, result.name) || result.mainFile !== join(workspace, 'netlify/functions', `${result.name}.mts`) || result.runtime !== 'js' || result.bundler !== 'esbuild' || result.runtimeVersion !== 'nodejs24.x' || result.runtimeAPIVersion !== 2 || result.entryFilename !== '___netlify-entry-point.mjs' || (result.bundlerErrors?.length ?? 0) || (result.bundlerWarnings?.length ?? 0) || Object.keys(result.nativeNodeModules ?? {}).length) fail('COMPILER_RESULT');
+      assertCompilerResult(result, workspace, destination);
     }
     if (JSON.stringify(sorted(await fs.readdir(destination))) !== JSON.stringify(FUNCTIONS)) fail('OUTPUT_SET');
     const outputFiles = await inventory(destination);

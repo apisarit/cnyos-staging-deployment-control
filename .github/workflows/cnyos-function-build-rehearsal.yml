@@ -16,7 +16,7 @@ jobs:
   compare-only:
     if: github.repository_id == '1362863285' && github.repository == 'apisarit/cnyos-staging-deployment-control' && github.event_name == 'push' && github.ref == 'refs/heads/rehearsal/function-builder-2026-09-10'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 24
     steps:
       - name: Check out the exact rehearsal commit without persisting authentication
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # official v6 ref verified 2026-09-10
@@ -30,7 +30,7 @@ jobs:
           show-progress: false
       - name: Build public toolchain, then compare two credential-free isolated builds
         working-directory: rehearsal/function-builder
-        timeout-minutes: 23
+        timeout-minutes: 22
         shell: bash
         run: |
           set -euo pipefail
