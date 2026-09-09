@@ -1,0 +1,90 @@
+{
+  "schema": "cnyos-function-source-input/v1",
+  "declaredGitCommit": "dc6c8c776909ed8a3280765d7232ed8eacba955c",
+  "files": [
+    {
+      "path": "netlify/functions/_shared/database-backup-runtime.mjs",
+      "sha256": "f499e68f39b4e2e2438239b891d6f03d3fa96fca2ce72c75f5458396a9eb7dc9"
+    },
+    {
+      "path": "netlify/functions/_shared/database-backup.mjs",
+      "sha256": "05409b35a7a3ae1358350e32b1b6a9744a0c3662c36d19072dbc788fdf465ace"
+    },
+    {
+      "path": "netlify/functions/_shared/evidence-search.mjs",
+      "sha256": "1844fe2cfe4225ce344dcaf3a0f82634134252ef792e685d56b614f24dd78845"
+    },
+    {
+      "path": "netlify/functions/_shared/google-service-account-credential.mjs",
+      "sha256": "6203d85009bd94eb9e9b2435cc547ff2aaa225d2ebae5d6bb725ac21465be6ee"
+    },
+    {
+      "path": "netlify/functions/_shared/line-oa.mjs",
+      "sha256": "13bfffd5faad2e031d4f6c4f9c339b04038306332d0030cc092f009b906d910b"
+    },
+    {
+      "path": "netlify/functions/_shared/owner-control.mjs",
+      "sha256": "b323205a05ae2c0f267d947a0ff208de65f4713c3797d4de6fa83a42fc106fda"
+    },
+    {
+      "path": "netlify/functions/_shared/owner-drive.mjs",
+      "sha256": "f9902fd75acdb2cb5902792e5cb33d66419bae4f04704fb010a121762407d0ac"
+    },
+    {
+      "path": "netlify/functions/_shared/patient-identity.mjs",
+      "sha256": "d5b2ef55d8fe7542c03f7735b78bd022cb325e39fff587fd4a2ba96e0285c218"
+    },
+    {
+      "path": "netlify/functions/_shared/restore-source.mjs",
+      "sha256": "8adae598885f2223e6c4e7e91b2b42f1e90dc352c0a3e10e8c0a1397136fa596"
+    },
+    {
+      "path": "netlify/functions/account-access.mts",
+      "sha256": "35d0c7dd22329cfa9db1b470199133a00d42d7d52fe596c35d55cb12417b1885"
+    },
+    {
+      "path": "netlify/functions/database-backup-background.mts",
+      "sha256": "5b49236c67c4802538ae4532331452cf90abddbe1ef70bc90157d295870a24ee"
+    },
+    {
+      "path": "netlify/functions/database-backup-recovery.mts",
+      "sha256": "acdb5c89b6d079b54bc1f16227c77874ce25ed14bf2f0dc50f5f9e531d54ef32"
+    },
+    {
+      "path": "netlify/functions/database-backup.mts",
+      "sha256": "a39fad4537e35eecd9b9d3a90e363646a118ed6bf46d3fc5c9f73da265c8e350"
+    },
+    {
+      "path": "netlify/functions/evidence-search.mts",
+      "sha256": "98a1bc3a640c79fd51415c6adb64439fe0e1b795905d72cd0b2e7efc01826b78"
+    },
+    {
+      "path": "netlify/functions/line-oa-webhook.mts",
+      "sha256": "1a2947866ed62f8b551b979816cb99847f1505259ec5838926b13973244c1be5"
+    },
+    {
+      "path": "netlify/functions/owner-drive.mts",
+      "sha256": "45920995272e39683819acf55feab7298942b2f54c2dc7459269de12ebfa12c1"
+    },
+    {
+      "path": "netlify/functions/owner-subscription.mts",
+      "sha256": "bf0aa20938db669d4824867f3924cfd9e545f7429e1d0a455e942a29b2ac8ac3"
+    },
+    {
+      "path": "netlify/functions/patient-identity.mts",
+      "sha256": "bb331804e3eae9e1297d9b4cd63728f907ed12581e8c0a859a6162bd061882df"
+    },
+    {
+      "path": "netlify/functions/platform-console.mts",
+      "sha256": "71346c74282f4fbdc52374eda2b06c85a83ba26b7dbd7024996885ec789774ad"
+    },
+    {
+      "path": "netlify/functions/restore-source.mts",
+      "sha256": "c45b6e29d71718336e522b606df4f13ad9446505d5fe15e80a2af1ff48e5c410"
+    },
+    {
+      "path": "platform-config.js",
+      "sha256": "ed5938226ff12849121117c60f4815cb75d177ce8cb46202c724a83eec5b8e04"
+    }
+  ]
+}

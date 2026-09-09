@@ -1,0 +1,39 @@
+# Local candidate only. Publishing to the named non-default branch would run this job.
+# No application repository checkout, deployment, credentials, OIDC or approval evidence.
+name: CNYOS credential-free Function build rehearsal
+on:
+  push:
+    branches: [rehearsal/function-builder-2026-09-10]
+    paths:
+      - '.github/workflows/cnyos-function-build-rehearsal.yml'
+      - 'rehearsal/function-builder/**'
+permissions:
+  contents: read
+concurrency:
+  group: cnyos-function-build-rehearsal
+  cancel-in-progress: false
+jobs:
+  compare-only:
+    if: github.repository_id == '1362863285' && github.repository == 'apisarit/cnyos-staging-deployment-control' && github.event_name == 'push' && github.ref == 'refs/heads/rehearsal/function-builder-2026-09-10'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out the exact rehearsal commit without persisting authentication
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # official v6 ref verified 2026-09-10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          fetch-tags: false
+          submodules: false
+          lfs: false
+          show-progress: false
+      - name: Build public toolchain, then compare two credential-free isolated builds
+        working-directory: rehearsal/function-builder
+        timeout-minutes: 23
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -i PATH=/usr/local/bin:/usr/bin:/bin LANG=C LC_ALL=C TZ=UTC \
+            node run-rehearsal.mjs
+      # No artifact upload: only the bounded sanitized comparison summary reaches logs.

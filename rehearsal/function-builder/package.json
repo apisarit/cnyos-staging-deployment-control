@@ -1,0 +1,16 @@
+{
+  "name": "cnyos-function-builder-toolchain-candidate",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Unreviewed isolated Function-builder dependency candidate; not controller activation.",
+  "type": "module",
+  "engines": {
+    "node": "24.20.0"
+  },
+  "packageManager": "npm@11.19.0",
+  "dependencies": {
+    "@netlify/blobs": "10.7.13",
+    "@netlify/zip-it-and-ship-it": "15.5.1",
+    "qrcode": "1.5.4"
+  }
+}
