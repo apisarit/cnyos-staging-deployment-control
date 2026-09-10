@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="no-referrer">
+  <title>Patient Check-in — Chananya Clinical OS</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-department1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=hybrid-identity1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=hybrid-identity1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-department1"></script>
+  <script defer src="check-in.js?v=hybrid-identity1"></script>
+</head>
+<body data-page="checkin">
+  <div id="boot">
+    <div><div class="spinner"></div><h2>กำลังเปิด Patient Check-in</h2><p id="boot-error">กำลังตรวจสอบ session, clinic และสิทธิ์</p></div>
+  </div>
+
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/">
+        <span class="brand-mark">ช</span>
+        <span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical &amp; Wellness OS</small></span>
+      </a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">One patient • one identity<br>Digital-first, never digital-only</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close type="button" aria-label="ปิดเมนู"></button>
+
+    <div class="workspace">
+      <header class="top">
+        <div class="actions">
+          <button class="btn ghost menu-toggle" data-shell-menu type="button" aria-label="เปิดเมนู" aria-expanded="false">☰</button>
+          <div class="top-title"><span class="page-kicker">Identity &amp; Intake</span><h1>ยืนยันผู้รับบริการและเปิด Encounter</h1></div>
+        </div>
+        <div class="actions">
+          <div class="identity-block"><small id="identity"></small></div>
+          <span class="badge" id="role">viewer</span>
+          <button class="btn ghost" id="logout" type="button">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero identity-hero">
+          <span class="foundation-eyebrow">HYBRID PATIENT IDENTITY</span>
+          <h2>สแกนเมื่อมีมือถือ • ค้น HN เมื่อไม่มีมือถือ</h2>
+          <p>ทั้งสองเส้นทางยืนยันผู้รับบริการก่อนสร้าง Encounter จาก transaction เดียว พร้อม audit โดยไม่เก็บข้อมูลสุขภาพไว้ใน QR</p>
+        </section>
+
+        <div class="status space-block-md" id="identity-backend-status" role="status" aria-live="polite">กำลังตรวจสอบ Identity service…</div>
+
+        <div class="identity-checkin-grid">
+          <section class="card">
+            <div class="section-heading"><span class="section-number">QR</span><div><h2>สแกนบัตรจาก LINE</h2><p>กล้องอ่าน one-time token; หากกล้องไม่รองรับ ใช้รหัส 6 หลัก</p></div></div>
+
+            <div class="scanner-frame hidden" id="scanner-frame">
+              <video id="scanner-video" playsinline muted aria-describedby="scanner-support"></video>
+              <div class="scanner-guide" aria-hidden="true"></div>
+            </div>
+            <div class="actions">
+              <button class="btn primary" id="scanner-start" type="button">เปิดกล้องสแกน</button>
+              <button class="btn ghost hidden" id="scanner-stop" type="button">ปิดกล้อง</button>
+            </div>
+            <p class="muted" id="scanner-support">กำลังตรวจสอบความสามารถของกล้อง</p>
+
+            <form class="form space-top-md" id="credential-form">
+              <label class="full">รหัส 6 หลัก หรือ credential จาก QR
+                <input id="credential-input" type="text" autocomplete="off" inputmode="text" placeholder="123 456" required>
+              </label>
+              <button class="btn ghost full" type="submit">ตรวจสอบผู้รับบริการ</button>
+            </form>
+          </section>
+
+          <section class="card">
+            <div class="section-heading"><span class="section-number">HN</span><div><h2>ไม่มีมือถือ / ใช้ระบบเดิม</h2><p>ค้นจาก HN ชื่อ วันเกิด หรือโทรศัพท์ แล้วตรวจสอบกับผู้รับบริการ</p></div></div>
+            <form class="form" id="manual-search-form">
+              <label class="full">ค้นหาผู้รับบริการ
+                <input id="manual-search" type="search" autocomplete="off" placeholder="HN / ชื่อ / วันเกิด / โทรศัพท์" minlength="2" required>
+              </label>
+              <button class="btn ghost full" type="submit">ค้นหา</button>
+            </form>
+            <div class="identity-results space-top-sm" id="manual-results" aria-live="polite"><p class="muted">กรอกอย่างน้อย 2 ตัวอักษร</p></div>
+          </section>
+        </div>
+
+        <section class="card hidden" id="identity-confirmation">
+          <div class="section-heading"><span class="section-number">✓</span><div><h2>ตรวจสอบร่วมกับผู้รับบริการ</h2><p>ผู้รักษาต้องยืนยันข้อมูลบนหน้าจอกับบุคคลตรงหน้าก่อนเปิด Encounter</p></div></div>
+          <div class="identity-preview">
+            <div><small>HN</small><strong id="confirm-hn">—</strong></div>
+            <div><small>ชื่อ–นามสกุล</small><strong id="confirm-name">—</strong></div>
+            <div><small>วันเกิด</small><strong id="confirm-dob">—</strong></div>
+            <div><small>โทรศัพท์ 4 ตัวท้าย</small><strong id="confirm-phone">—</strong></div>
+          </div>
+          <div class="alert warning hidden" id="confirm-allergy-box">
+            <b>Allergy / ข้อควรระวัง</b>
+            <ul id="confirm-allergies"></ul>
+          </div>
+          <form class="form space-top-md" id="confirmation-form">
+            <label class="full hidden" id="verification-method-label">วิธียืนยัน
+              <select id="verification-method">
+                <option value="manual_hn">บัตร HN / แจ้ง HN</option>
+                <option value="government_id">ตรวจบัตรที่ออกโดยรัฐ</option>
+                <option value="demographic_match">ชื่อ + วันเกิด/โทรศัพท์ตรงกัน</option>
+                <option value="guardian_attestation">ผู้ดูแลยืนยันแทน</option>
+              </select>
+            </label>
+            <label class="full hidden" id="verification-note-label">หมายเหตุการยืนยัน
+              <textarea id="verification-note" placeholder="ระบุชื่อ/ความสัมพันธ์ของผู้ดูแลเมื่อยืนยันแทน"></textarea>
+            </label>
+            <label class="full">อาการสำคัญเบื้องต้น
+              <textarea id="checkin-chief" placeholder="กรอกภายหลังในเวชระเบียนได้"></textarea>
+            </label>
+            <label class="full check-row identity-present-check">
+              <input type="checkbox" id="patient-present" required>
+              ฉันได้ตรวจสอบชื่อและข้อมูลระบุตัวกับผู้รับบริการ/ผู้ดูแลแล้ว
+            </label>
+            <button class="btn primary full" id="confirm-encounter" type="submit">ยืนยันตัวตนและเปิด Encounter</button>
+            <button class="btn ghost full" id="cancel-confirmation" type="button">ยกเลิกและเลือกใหม่</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Production Workstation</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-production-atomic1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-ia1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=clinical-os-ia1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-production-atomic1"></script>
+  <script defer src="production.js?v=clinical-os-production-atomic1"></script>
+</head>
+<body data-page="production">
+<div id="boot"><div><div class="spinner"></div><h2>กำลังเปิด Production Workstation</h2><p id="boot-error">กำลังตรวจสอบ session และสิทธิ์</p></div></div>
+<div id="app" class="app-frame hidden">
+<aside class="sidebar" aria-label="เมนูระบบ"><a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span></a><nav class="global-nav" id="global-nav"></nav><div class="sidebar-foot">Manufacturing traceability<br>Formula → Batch → QC → Lot</div></aside>
+<button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+<div class="workspace">
+<header class="top"><div class="actions"><button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button><div class="top-title"><span class="page-kicker">Production</span><h1>การผลิตและควบคุมวัตถุดิบ</h1></div></div><div class="actions"><div class="identity-block"><small id="identity"></small></div><span class="badge" id="role">viewer</span><button class="btn ghost" id="logout">ออกจากระบบ</button></div></header>
+<nav class="nav"><button class="active" data-view="queue">Production Queue</button><button data-view="formulas">Formula / BOM</button><button data-view="materials">Raw Material</button><button data-view="import">Import Excel/CSV</button></nav>
+<main>
+<section class="view active" id="queue">
+<div class="hero"><h2>Request → Produce → Independent Quality → Finished Goods</h2><p>Production เห็นเฉพาะคำขอและข้อมูลการผลิตที่จำเป็น ไม่เห็นข้อมูลผู้รับบริการ และไม่มีสิทธิ์ปล่อยผ่าน Batch ของตนเอง</p></div>
+<div class="stats"><div class="stat">คำขอผลิต<strong id="stat-requests">0</strong></div><div class="stat">กำลังผลิต<strong id="stat-orders">0</strong></div><div class="stat">รอ QC<strong id="stat-qc">0</strong></div><div class="stat">Released<strong id="stat-released">0</strong></div><div class="stat">Raw material ต่ำ<strong id="stat-low">0</strong></div></div>
+<div class="card"><div class="section-heading"><span class="section-number">1</span><div><h2>Production requests</h2><p>คำขอที่ Pharmacy ส่งมาโดยไม่เปิดเผยชื่อ HN หรือข้อมูลการรักษา</p></div></div><div id="request-list" class="list"></div></div>
+<div class="card"><h3>Production orders / Batch</h3><div id="order-list" class="list"></div></div>
+</section>
+<section class="view" id="formulas"><div class="grid2"><div class="card"><h3>สร้าง Formula Master</h3><form id="formula-form" class="form"><label>Formula code<input id="f-code" required></label><label>Revision<input id="f-rev" value="00" required></label><label class="full">ชื่อสูตร<input id="f-name" required></label><label class="full">Finished product<select id="f-product" required></select></label><label>Standard batch size<input id="f-batch" type="number" step="0.0001" min="0.0001" required></label><label>Batch unit<input id="f-unit" readonly required></label><label>Expected yield %<input id="f-yield" type="number" step="0.01" min="0.01" value="100"></label><label>Shelf life days<input id="f-shelf" type="number" min="0"></label><label>สถานะ<select id="f-status"><option value="draft">draft</option><option value="approved">approved</option><option value="inactive">inactive</option></select></label><label class="full">Manufacturing instructions<textarea id="f-instructions"></textarea></label><button class="btn primary full">บันทึก Formula และ Audit</button></form></div><div class="card"><h3>Formula list</h3><div id="formula-list" class="list"></div></div></div>
+<div class="card"><h3>เพิ่ม BOM Component</h3><form id="component-form" class="form"><label class="full">Formula<select id="c-formula" required></select></label><label class="full">Raw material<select id="c-material" required></select></label><label>Quantity / batch<input id="c-qty" type="number" step="0.000001" min="0.000001" required></label><label>Unit<input id="c-unit" readonly required></label><label>Sequence<input id="c-seq" type="number" min="1" value="1"></label><label>Process stage<input id="c-stage"></label><button class="btn primary full">เพิ่ม Component และ Audit</button></form><div id="component-list" class="list"></div></div></section>
+<section class="view" id="materials"><div class="card"><h3>Raw material stock by Lot / FEFO</h3><div id="material-list" class="list"></div></div></section>
+<section class="view" id="import"><div class="grid2"><div class="card"><h3>Upload Google Sheet export</h3><p class="muted">รองรับ .xlsx และ .csv ข้อมูลจะ Preview และ Validate ก่อน Import</p><form id="import-form" class="form"><label>Import type<select id="import-type"><option value="products">Products</option><option value="raw_materials">Raw Materials</option><option value="suppliers">Suppliers</option><option value="formulas">Formulas</option><option value="formula_components">Formula Components</option><option value="inventory_lots">Inventory Lots</option></select></label><label>File<input id="import-file" type="file" accept=".xlsx,.xls,.csv" required></label><button class="btn primary full">Preview & Validate</button></form><div id="import-summary"></div><button class="btn primary hidden" id="confirm-import">Confirm Import</button></div><div class="card"><h3>Preview</h3><div class="table-wrap"><table id="preview-table"></table></div></div></div></section>
+</main></div></div>
+<dialog class="workflow-dialog" id="complete-dialog">
+  <form class="form" id="complete-form">
+    <div class="workflow-dialog-head full"><div><span class="page-kicker">Production result</span><h2>บันทึกผลผลิตจริง</h2></div><button class="btn ghost" type="button" data-close-dialog aria-label="ปิด">ปิด</button></div>
+    <p class="notice full" id="complete-order-label"></p>
+    <label>Actual quantity<input id="complete-actual" type="number" min="0.0001" step="0.0001" required></label>
+    <label>Loss quantity<input id="complete-loss" type="number" min="0" step="0.0001" value="0" required></label>
+    <label>Waste quantity<input id="complete-waste" type="number" min="0" step="0.0001" value="0" required></label>
+    <div class="right full"><button class="btn ghost" type="button" data-close-dialog>ยกเลิก</button><button class="btn primary">บันทึกและส่ง QC</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body></html>

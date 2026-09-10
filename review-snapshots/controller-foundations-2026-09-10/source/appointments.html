@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Appointment Center</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-department1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-ia1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=clinical-os-ia1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-department1"></script>
+  <script defer src="appointments.js?v=clinical-os-department1"></script>
+</head>
+<body data-page="appointments">
+  <div id="boot"><div><div class="spinner"></div><h2>กำลังเปิดระบบนัดหมาย</h2><p id="boot-error">กำลังตรวจสอบสิทธิ์</p></div></div>
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span></a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Reception workflow<br>Schedule → Book → Check-in</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+    <div class="workspace">
+      <header class="top">
+        <div class="actions"><button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button><div class="top-title"><span class="page-kicker">Appointments</span><h1>ศูนย์นัดหมายและคิว</h1></div></div>
+        <div class="actions"><div class="identity-block"><small id="identity"></small></div><span class="badge" id="role">viewer</span><button class="btn ghost" id="logout">ออกจากระบบ</button></div>
+      </header>
+      <nav class="module-nav" aria-label="ส่วนของระบบนัดหมาย"><a href="#availability">ช่วงเวลาว่าง</a><a href="#booking-section">จองนัดหมาย</a><a href="#appointment-register">รายการนัด</a></nav>
+      <main>
+        <div id="view-only-notice" class="notice warning hidden space-bottom-md">บัญชีนี้มีสิทธิ์ดูตารางนัดหมาย แต่การจองและเปลี่ยนสถานะเป็นหน้าที่ของ Admin หรือ Reception</div>
+        <section class="card" id="availability">
+          <div class="section-heading"><span class="section-number">1</span><div><h2>ค้นหาช่วงเวลาว่าง</h2><p>ค้นตามวัน ผู้ให้บริการ สาขา ห้อง หรือประเภทบริการ</p></div></div>
+          <div class="toolbar">
+            <label>ตั้งแต่วันที่<input id="date-from" type="date"></label>
+            <label>ถึงวันที่<input id="date-to" type="date"></label>
+            <label>ค้นหา<input id="search" placeholder="ชื่อผู้ให้บริการ สาขา ห้อง หรือบริการ"></label>
+            <button id="search-btn" class="btn primary">ค้นหา</button>
+          </div>
+          <div id="schedule-status" class="notice space-block-md">กำลังโหลดช่วงเวลาว่าง…</div>
+          <div id="schedule-list" class="schedule-grid"></div>
+        </section>
+
+        <section class="card" id="booking-section">
+          <div class="section-heading"><span class="section-number">2</span><div><h2>จองนัดหมาย</h2><p>เลือกช่วงเวลาและผู้รับบริการ แล้วบันทึกอาการสำคัญสำหรับส่งต่อทีมคลินิก</p></div></div>
+          <form id="booking-form" class="form">
+            <label class="full">ช่วงเวลาที่เลือก<input id="selected-schedule-label" readonly placeholder="เลือกจากช่วงเวลาว่าง"></label>
+            <input id="selected-schedule" type="hidden">
+            <label class="full">ค้นหาผู้รับบริการ<input id="patient-search" placeholder="HN ชื่อ นามสกุล หรือโทรศัพท์"></label>
+            <label class="full">ผู้รับบริการ<select id="patient" required><option value="">เลือกผู้รับบริการ</option></select></label>
+            <label class="full">อาการสำคัญ<textarea id="chief-complaint" placeholder="เหตุผลที่มารับบริการ"></textarea></label>
+            <label class="full">หมายเหตุ<textarea id="notes"></textarea></label>
+            <button class="btn primary full">ยืนยันการจอง</button>
+          </form>
+          <div id="booking-status" class="notice space-top-sm">ยังไม่ได้เลือกช่วงเวลา</div>
+        </section>
+
+        <section class="card" id="appointment-register">
+          <div class="section-heading"><span class="section-number">3</span><div><h2>รายการนัดหมาย</h2><p>ติดตามสถานะจาก booked จนถึง completed</p></div></div>
+          <div class="toolbar">
+            <label>วันที่<input id="appointments-date" type="date"></label>
+            <label>สถานะ<select id="status-filter"><option value="">ทั้งหมด</option><option>booked</option><option>confirmed</option><option>checked_in</option><option>in_service</option><option>completed</option><option>cancelled</option><option>no_show</option></select></label>
+            <button id="refresh-appts" class="btn primary">โหลดรายการ</button>
+          </div>
+          <div id="appointment-list" class="space-top-md"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</body>
+</html>
