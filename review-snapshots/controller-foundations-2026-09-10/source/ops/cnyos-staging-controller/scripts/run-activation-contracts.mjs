@@ -12,6 +12,7 @@ const FOUNDATION_SCRIPTS = Object.freeze([
   'scripts/controller-uat-access-observations.mjs',
   'scripts/controller-uat-browser-read-policy.mjs',
   'scripts/controller-uat-browser-transport.mjs',
+  'scripts/controller-uat-browser-matrix.mjs',
   'scripts/controller-uat-evidence-publication.mjs',
   'scripts/create-producer-bundle.mjs',
   'scripts/finalize-evidence.mjs',
@@ -142,6 +143,11 @@ export const ACTIVATION_PAIRS = Object.freeze([
 ]);
 
 const BASE_TESTS = Object.freeze([
+  Object.freeze({
+    id: 'uat-browser-matrix',
+    path: 'tests/controller-uat-browser-matrix-contract.mjs',
+    marker: 'CNYOS UAT browser matrix contract: passed'
+  }),
   Object.freeze({
     id: 'uat-browser-read-policy',
     path: 'tests/controller-uat-browser-read-policy-contract.mjs',

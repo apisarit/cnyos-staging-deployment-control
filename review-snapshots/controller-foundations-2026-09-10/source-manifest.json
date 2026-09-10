@@ -4,11 +4,11 @@
   "sourceRepository": "apisarit/chananya-clinical-wellness-os",
   "sourceGitHead": "4e98152f91c65bb7089222145b04620ba919306a",
   "provenance": "Dirty engineering working-tree bytes, including existing and new changes; not a committed release snapshot.",
-  "sourceAllowlistSha256": "157cfa3ef56bca31b01e66ebfeb3e150b4f37e044aa6c2061090a9026cbb1aa0",
+  "sourceAllowlistSha256": "36c823b396d5260d366d77a0b8f36c4914a7b5706bbb4693cf764b2aec032116",
   "destinationRepository": "apisarit/cnyos-staging-deployment-control",
   "sourcePrefix": "source",
-  "fileCount": 82,
-  "totalBytes": 2456092,
+  "fileCount": 96,
+  "totalBytes": 2708563,
   "authenticatedStagingVerified": false,
   "independentSecurityApproval": false,
   "activationAuthorized": false,
@@ -21,9 +21,33 @@
       "mode": "100644"
     },
     {
+      "path": "admin.js",
+      "bytes": 9085,
+      "sha256": "9512d7eee7068b0bfba20a0f4a90bbd5b66c7f3da6a7c676479cd7dfbad7f818",
+      "mode": "100644"
+    },
+    {
+      "path": "app-shell.js",
+      "bytes": 5495,
+      "sha256": "e0aff51fb6f2adf6dea4d835e0da4092cffa53c1040293523261d15cddf60884",
+      "mode": "100644"
+    },
+    {
       "path": "appointments.html",
       "bytes": 6675,
       "sha256": "dd555a44316c81ad8261e43e5df9599b43f4b4e917e8cebfdf2ded171383f255",
+      "mode": "100644"
+    },
+    {
+      "path": "appointments.js",
+      "bytes": 11065,
+      "sha256": "6cf885fe4dbc11ef03d2315408364265b094065b78e3331de3a10ba7a406f14e",
+      "mode": "100644"
+    },
+    {
+      "path": "chananya-runtime.js",
+      "bytes": 10445,
+      "sha256": "d37cf5c6ced064057c7ae0e278f6a057213470f812b79ec49b68d6318f7b8b11",
       "mode": "100644"
     },
     {
@@ -33,15 +57,33 @@
       "mode": "100644"
     },
     {
+      "path": "check-in.js",
+      "bytes": 13213,
+      "sha256": "7bed759fd514596ce1fbed97649fd82d08d6cb21a45d6551e15c63fc77a46cbe",
+      "mode": "100644"
+    },
+    {
       "path": "clinical-v3.html",
       "bytes": 29770,
       "sha256": "8533d0f5d352189611a68b77384c7118203c6b1ef34b0fead62ca89f80373b82",
       "mode": "100644"
     },
     {
+      "path": "clinical-v3.js",
+      "bytes": 19900,
+      "sha256": "c021cef1ea665df6ba9163a115521bab23bf09d0673e528967eef564e1c98354",
+      "mode": "100644"
+    },
+    {
       "path": "foundation.html",
       "bytes": 20606,
       "sha256": "4d65011d3522beea07e192041cac6706e88e1d958424f3902eed62ea926c9f38",
+      "mode": "100644"
+    },
+    {
+      "path": "foundation.js",
+      "bytes": 37273,
+      "sha256": "771f19a20b102540635f52c966a16a96e0a02d7f70804177208ca78a2b5055fb",
       "mode": "100644"
     },
     {
@@ -52,8 +94,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/README.md",
-      "bytes": 52249,
-      "sha256": "8ac560f9a6c37af75266a20dad3ecae53c5160081320c641252a42ccc3179e10",
+      "bytes": 55622,
+      "sha256": "86ade882ba6e5e4a9c2f65f6cbd3fed4cfd146dd5430f2a73ebef8541b5d1fcb",
       "mode": "100644"
     },
     {
@@ -76,8 +118,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/package.json",
-      "bytes": 1886,
-      "sha256": "61e95c6e55f2f426653543f2cf4fe6168875d07262ff04a9e4f904773890a335",
+      "bytes": 1943,
+      "sha256": "ecadb8d88a84ea39b3f83acf5608db5d305093d209c67fd256e184752255ffea",
       "mode": "100644"
     },
     {
@@ -111,6 +153,12 @@
       "mode": "100644"
     },
     {
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-matrix.mjs",
+      "bytes": 20608,
+      "sha256": "c29c8c062ba00d22de502c2c8ce89d2a23a8a06eb48bc2d5d7833de91d0538e3",
+      "mode": "100644"
+    },
+    {
       "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-read-policy.mjs",
       "bytes": 16863,
       "sha256": "6fafba5cc5225b4d7e8e7fccb898bc2c8a1ec0b37e409cc126b035f092316080",
@@ -118,8 +166,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-transport.mjs",
-      "bytes": 24221,
-      "sha256": "f195da98037728c8d77780edc136097a4959470c56559b4d8f2fad5b10baa772",
+      "bytes": 32185,
+      "sha256": "5e07765c98101d36616557e571e8650c7a4330b5726d2e31232fa5907b134760",
       "mode": "100644"
     },
     {
@@ -202,8 +250,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
-      "bytes": 11025,
-      "sha256": "56d1f77cc8663271701ab3ef5acc7248a18438a8ea9f1253ce34697296051f0f",
+      "bytes": 11244,
+      "sha256": "81da02044d09ce2bacb4a4c0edccff185a38058ac7c45d8cebc451c7a22e7e04",
       "mode": "100644"
     },
     {
@@ -286,8 +334,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/test-support/uat-browser-local.mjs",
-      "bytes": 17708,
-      "sha256": "d4666a1b42737d52f787af2e30e25f9a9833b17583628a358597925c263fae22",
+      "bytes": 18002,
+      "sha256": "ae3c142e36d6988fae11206a3afd20383218e5e368702ef86f9f281bd3397518",
       "mode": "100644"
     },
     {
@@ -310,8 +358,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
-      "bytes": 228945,
-      "sha256": "a29c5e07c75ac257476aa87747af07eb18eb2a8b0e60ec47dd5ad328204431f0",
+      "bytes": 229096,
+      "sha256": "dd672e67601f09c422741105ac3dbd77b78a9ef7b949d830a8213b5848ce6e76",
       "mode": "100644"
     },
     {
@@ -333,6 +381,12 @@
       "mode": "100644"
     },
     {
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-matrix-contract.mjs",
+      "bytes": 21960,
+      "sha256": "956a1eded3f4bd94f8452d3bdd24f4ef377f56f4181aeabc687888d2eeff7ba8",
+      "mode": "100644"
+    },
+    {
       "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-read-policy-contract.mjs",
       "bytes": 11969,
       "sha256": "1e1bfc5c0e5ab72a953164b99c795eafa9e84c4b7a3afc4959a0cf75d517b12e",
@@ -340,8 +394,8 @@
     },
     {
       "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-transport-contract.mjs",
-      "bytes": 17558,
-      "sha256": "565fa0fa9d170d9b963242d7151adc0ac3ef2be98dce7e42e91bc7641c49cbab",
+      "bytes": 29014,
+      "sha256": "33689f4e255be2c438d3a76c6efce3fc46f402da349bb0461e73877c9338f344",
       "mode": "100644"
     },
     {
@@ -477,9 +531,27 @@
       "mode": "100644"
     },
     {
+      "path": "outcomes.js",
+      "bytes": 7260,
+      "sha256": "98447611995560afaafd8ed9b5474da9281949b2c77487fd8a0acaf819f90a3a",
+      "mode": "100644"
+    },
+    {
       "path": "pharmacy.html",
       "bytes": 11690,
       "sha256": "e840bc03afc66a2fb35bb7a51608c0e250c7623dba8fefc1c12bff43fc9d4d5f",
+      "mode": "100644"
+    },
+    {
+      "path": "pharmacy.js",
+      "bytes": 29006,
+      "sha256": "8827a2d7561dbcbfe978f309662db3cbc2525eeb9bd5a6f1c54b9513c5e52cea",
+      "mode": "100644"
+    },
+    {
+      "path": "platform-config.js",
+      "bytes": 10381,
+      "sha256": "ed5938226ff12849121117c60f4815cb75d177ce8cb46202c724a83eec5b8e04",
       "mode": "100644"
     },
     {
@@ -489,9 +561,21 @@
       "mode": "100644"
     },
     {
+      "path": "production.js",
+      "bytes": 23429,
+      "sha256": "71fb7abea3fdf53235b23164f8b83a4695d570e16a230ff0286dbf3391a89139",
+      "mode": "100644"
+    },
+    {
       "path": "quality.html",
       "bytes": 6621,
       "sha256": "49050f4b31338ea03cdcefb6f9d89657eef23dfb3d51ec21d217229939de76b0",
+      "mode": "100644"
+    },
+    {
+      "path": "quality.js",
+      "bytes": 9837,
+      "sha256": "11097d0f37ecdc01d7c7df7c3683e948ffad8cd7d4a5477813c8ddaa43f1a9e1",
       "mode": "100644"
     },
     {
@@ -506,5 +590,8 @@
       "sha256": "e29e3d0db9c4221b3e28e0f8e64500a6edd726a49b76bfc02f1062aa717fa946",
       "mode": "100644"
     }
-  ]
+  ],
+  "snapshotRevision": 2,
+  "previousReviewCommit": "0d501b121de6bd57bdb1a23b08ed8f8c898671b8",
+  "previousSourceManifestSha256": "747a395a3ae07da0c47ceb4f7bcf7d486917a8ec1268194717158ccca903cf7a"
 }

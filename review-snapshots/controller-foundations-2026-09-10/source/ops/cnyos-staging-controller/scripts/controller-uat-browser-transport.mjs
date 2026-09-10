@@ -8,7 +8,8 @@ import { Buffer } from 'node:buffer';
 
 const DEFAULTS = Object.freeze({ maxRequests: 512, maxTotalBytes: 32 * 1024 * 1024,
   maxResponseBytes: 4 * 1024 * 1024, maxRequestBytes: 16 * 1024,
-  maxPendingRequests: 128, maxConcurrentStreams: 8, operationTimeoutMs: 5000, totalTimeoutMs: 120000 });
+  maxPendingRequests: 128, maxConcurrentStreams: 8, maxScreenshotBytes: 2 * 1024 * 1024,
+  maxScreenshots: 8, operationTimeoutMs: 5000, totalTimeoutMs: 120000 });
 const KINDS = new Set(['document', 'script', 'style', 'json', 'image', 'font', 'empty']);
 const SAFE_HEADERS = new Set(['content-type', 'cache-control', 'etag', 'last-modified',
   'content-security-policy', 'content-security-policy-report-only', 'x-content-type-options',
@@ -94,6 +95,46 @@ function mimeAllowed(kind, value) {
     ['font/woff', 'font/woff2', 'application/font-woff'].includes(mime);
 }
 
+function topFrame(value) {
+  const tree = value.frameTree, frame = tree?.frame;
+  if (!record(tree) || !record(frame) || !id(frame.id) || !id(frame.loaderId) ||
+    frame.parentId !== undefined || typeof frame.url !== 'string' || bytes(frame.url) > 4096 ||
+    (tree.childFrames !== undefined && (!Array.isArray(tree.childFrames) || tree.childFrames.length))) {
+    throw makeError('NAVIGATION_FRAME');
+  }
+  return { frameId: frame.id, loaderId: frame.loaderId, url: frame.url };
+}
+function screenshotOf(value, limit) {
+  if (typeof value.data !== 'string' || value.data.length > Math.ceil(limit / 3) * 4 ||
+    value.data.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(value.data)) {
+    throw makeError('SCREENSHOT_BASE64');
+  }
+  const png = Buffer.from(value.data, 'base64');
+  if (png.length > limit || png.toString('base64') !== value.data || png.length < 57 ||
+    !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+    png.readUInt32BE(8) !== 13 || png.toString('ascii', 12, 16) !== 'IHDR' ||
+    png.readUInt32BE(16) !== 390 || png.readUInt32BE(20) !== 844 ||
+    png[24] !== 8 || ![2, 6].includes(png[25]) || png[26] !== 0 || png[27] !== 0 || png[28] !== 0) {
+    throw makeError('SCREENSHOT_PNG');
+  }
+  // Bound and validate the PNG container, not a general-purpose image decoder.
+  let offset = 8, chunks = 0, imageData = false, ended = false;
+  while (offset < png.length) {
+    if (++chunks > 4096 || offset + 12 > png.length) throw makeError('SCREENSHOT_PNG');
+    const length = png.readUInt32BE(offset), type = png.toString('ascii', offset + 4, offset + 8);
+    if (!/^[A-Za-z]{4}$/.test(type) || length > png.length - offset - 12 ||
+      (offset !== 8 && type === 'IHDR')) throw makeError('SCREENSHOT_PNG');
+    if (type === 'IDAT' && length > 0) imageData = true;
+    offset += length + 12;
+    if (type === 'IEND') {
+      if (length !== 0 || offset !== png.length || !imageData) throw makeError('SCREENSHOT_PNG');
+      ended = true;
+    }
+  }
+  if (!ended) throw makeError('SCREENSHOT_PNG');
+  return Object.freeze({ format: 'png', dataBase64: value.data, width: 390, height: 844, byteLength: png.length });
+}
+
 export async function createControllerUatBrowserTransport({ cdp, classifyRequest, limits: inputLimits } = {}) {
   if (!record(cdp) || typeof cdp.send !== 'function' || typeof cdp.onEvent !== 'function' ||
     typeof cdp.terminate !== 'function' || typeof classifyRequest !== 'function') throw makeError('OPTIONS');
@@ -102,7 +143,8 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
   let stopping = false, initialized = false, navigated = false, requestCount = 0, totalBytes = 0, aggregateBytes = 0, activeStreams = 0;
   const pending = new Map(), streams = new Map(), tasks = new Set(), heldAttachments = [], idleWaiters = new Set();
   const paused = new Map(), cancellations = new Set();
-  let abortUncertain = false, shutdownPauses = 0;
+  let abortUncertain = false, shutdownPauses = 0, cleanupConfirmed = false;
+  let navigation, navigating = false, screenshots = 0, screenshotBusy = false, exceptionCount = 0, consoleErrorCount = 0;
   const pulse = () => { for (const wake of idleWaiters) wake(); idleWaiters.clear(); };
   let resolveAttached;
   const attached = new Promise(resolve => { resolveAttached = resolve; });
@@ -180,6 +222,10 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
       try { await deadline(Promise.allSettled([...tasks]), 'CLEANUP_TIMEOUT'); } catch { uncertain = true; }
       try { unsubscribe?.(); } catch { uncertain = true; }
       pending.clear(); streams.clear(); paused.clear();
+      // A confirmed shutdown can still rethrow an earlier policy/application
+      // failure. Callers must use this status, not parse its error message, to
+      // distinguish that outcome from unconfirmed owned-runtime teardown.
+      cleanupConfirmed = !uncertain && !abortUncertain;
       if (uncertain || abortUncertain) failure = makeError('CLEANUP_UNCONFIRMED');
       if (failure) throw failure;
       return Object.freeze({ closed: true, requestCount, responseBytes: totalBytes,
@@ -192,6 +238,28 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
     const task = Promise.resolve().then(action).catch(latch);
     tasks.add(task);
     void task.finally(() => { tasks.delete(task); pulse(); });
+  }
+  function navigationEvent(event) {
+    if (!navigation?.armed || event.sessionId !== sessionId) return;
+    let observation;
+    if (event.method === 'Page.frameNavigated') {
+      const frame = event.params.frame;
+      if (!record(frame) || !id(frame.id) || !id(frame.loaderId) || typeof frame.url !== 'string' || bytes(frame.url) > 4096) {
+        throw makeError('NAVIGATION_EVENT');
+      }
+      if (frame.id !== navigation.frameId || frame.parentId !== undefined) return;
+      observation = { kind: 'frame', loaderId: frame.loaderId, url: frame.url };
+    } else if (event.method === 'Page.lifecycleEvent' && event.params.name === 'load') {
+      if (!id(event.params.frameId) || !id(event.params.loaderId) || !Number.isFinite(event.params.timestamp)) {
+        throw makeError('NAVIGATION_EVENT');
+      }
+      if (event.params.frameId !== navigation.frameId) return;
+      observation = { kind: 'load', loaderId: event.params.loaderId };
+    } else return;
+    if (observation.loaderId === navigation.previousLoaderId) return;
+    if (navigation.events.length >= 32) throw makeError('NAVIGATION_EVENT_LIMIT');
+    navigation.events.push(observation);
+    navigation.wake?.();
   }
   async function initialize(event) {
     if (initialized || sessionId || event.params.targetInfo.type !== 'page' ||
@@ -209,6 +277,7 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
       { urlPattern: '*', requestStage: 'Request' }, { urlPattern: '*', requestStage: 'Response' }
     ] }, sessionId);
     await command('Page.enable', {}, sessionId);
+    await command('Page.setLifecycleEventsEnabled', { enabled: true }, sessionId);
     await command('Runtime.enable', {}, sessionId);
     await command('Emulation.setTimezoneOverride', { timezoneId: 'Asia/Bangkok' }, sessionId);
     await command('Emulation.setLocaleOverride', { locale: 'th-TH' }, sessionId);
@@ -326,6 +395,15 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
       }
       pulse();
       if (!record(event) || typeof event.method !== 'string' || !record(event.params)) { latch(makeError('EVENT_SCHEMA')); return; }
+      try {
+        navigationEvent(event);
+        if (event.sessionId === sessionId && sessionId) {
+          if (event.method === 'Runtime.exceptionThrown' && ++exceptionCount > 1024) throw makeError('DIAGNOSTIC_LIMIT');
+          if (event.method === 'Runtime.consoleAPICalled' && event.params.type === 'error' && ++consoleErrorCount > 1024) {
+            throw makeError('DIAGNOSTIC_LIMIT');
+          }
+        }
+      } catch (error) { latch(error); return; }
       if (event.method === 'Target.attachedToTarget') {
         if (!record(event.params.targetInfo)) { latch(makeError('TARGET_SCHEMA')); return; }
         if (!targetId) {
@@ -358,6 +436,7 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
     healthy();
     return Object.freeze({ targetId, sessionId,
       assertHealthy: healthy,
+      getClosureStatus() { return Object.freeze({ cleanupConfirmed }); },
       async addInitScript(source) {
         healthy();
         if (navigated || typeof source !== 'string' || bytes(source) > 65536) throw makeError('INIT_SCRIPT');
@@ -367,11 +446,68 @@ export async function createControllerUatBrowserTransport({ cdp, classifyRequest
       async navigate(url) {
         try {
           healthy();
+          if (navigating || screenshotBusy) throw makeError('PAGE_OPERATION_BUSY');
+          navigating = true;
           decisionOf(classifyRequest, descriptorOf({ request: { url, method: 'GET' }, resourceType: 'Document' }, limits.maxRequestBytes), limits);
           navigated = true;
           const result = await command('Page.navigate', { url }, sessionId);
           if (result.errorText) throw makeError('NAVIGATION');
         } catch (error) { latch(error); await cleanup(); }
+        finally { navigating = false; }
+      },
+      async navigateAndWait(url) {
+        let current;
+        try {
+          healthy();
+          if (navigating || screenshotBusy) throw makeError('PAGE_OPERATION_BUSY');
+          navigating = true;
+          const decision = decisionOf(classifyRequest, descriptorOf({ request: { url, method: 'GET' }, resourceType: 'Document' }, limits.maxRequestBytes), limits);
+          if (decision.responseKind !== 'document') throw makeError('NAVIGATION');
+          const previous = topFrame(await command('Page.getFrameTree', {}, sessionId));
+          current = { frameId: previous.frameId, previousLoaderId: previous.loaderId, events: [], armed: false };
+          navigation = current;
+          navigated = true;
+          await deadline((async () => {
+            const result = await command('Page.navigate', { url, frameId: previous.frameId }, sessionId,
+              () => { current.armed = true; });
+            if (result.errorText !== undefined || result.isDownload === true || result.frameId !== previous.frameId ||
+              !id(result.loaderId) || result.loaderId === previous.loaderId) throw makeError('NAVIGATION');
+            while (true) {
+              healthy();
+              const matching = current.events.filter(event => event.loaderId === result.loaderId);
+              if (matching.some(event => event.kind === 'frame' && event.url !== url)) throw makeError('NAVIGATION_BINDING');
+              if (matching.some(event => event.kind === 'frame') && matching.some(event => event.kind === 'load')) break;
+              await new Promise(resolve => { current.wake = resolve; idleWaiters.add(resolve); });
+              idleWaiters.delete(current.wake); current.wake = undefined;
+            }
+            const final = topFrame(await command('Page.getFrameTree', {}, sessionId));
+            if (final.frameId !== result.frameId || final.loaderId !== result.loaderId || final.url !== url) throw makeError('NAVIGATION_BINDING');
+            current.result = Object.freeze({ ...final, loaded: true });
+          })(), 'NAVIGATION_TIMEOUT');
+          healthy();
+          return current.result;
+        } catch (error) { latch(error); await cleanup(); }
+        finally {
+          if (current?.wake) { idleWaiters.delete(current.wake); current.wake(); }
+          if (navigation === current) navigation = undefined;
+          navigating = false;
+        }
+      },
+      getPageDiagnostics() { healthy(); return Object.freeze({ exceptionCount, consoleErrorCount }); },
+      async captureScreenshot() {
+        try {
+          healthy();
+          if (navigating || screenshotBusy) throw makeError('PAGE_OPERATION_BUSY');
+          screenshotBusy = true;
+          if (++screenshots > limits.maxScreenshots) throw makeError('SCREENSHOT_LIMIT');
+          const value = await command('Page.captureScreenshot', { format: 'png', fromSurface: true,
+            captureBeyondViewport: false, clip: { x: 0, y: 0, width: 390, height: 844, scale: 1 } }, sessionId);
+          const screenshot = screenshotOf(value, limits.maxScreenshotBytes);
+          aggregateBytes += screenshot.byteLength;
+          if (aggregateBytes > limits.maxTotalBytes) throw makeError('AGGREGATE_SIZE');
+          return screenshot;
+        } catch (error) { latch(error); await cleanup(); }
+        finally { screenshotBusy = false; }
       },
       async evaluate(expression) {
         try {

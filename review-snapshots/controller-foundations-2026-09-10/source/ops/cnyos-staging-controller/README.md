@@ -735,8 +735,15 @@ contract. Denied and other non-streaming pauses are explicitly canceled first;
 active/opening streams avoid conflicting Fetch operations. Graceful context
 disposal/detachment is never used, including on success, because a real local test
 showed it could release a denied paused request. Unconfirmed cancellation or
-termination is a failure, not a successful cleanup receipt. `navigate()` dispatches
-navigation; the caller must separately bind and await actual document readiness.
+termination is a failure, not a successful cleanup receipt. `navigate()` is
+dispatch-only. `navigateAndWait()` requires the owned top frame, exact URL, a new
+loader, matching frame-commit/load events and a final frame-tree recheck. Stale,
+unrelated, same-document and generic load events do not prove readiness.
+`captureScreenshot()` returns a bounded 390×844 PNG in memory, with strict base64,
+container/dimension and aggregate-budget checks; it is not a full image decoder.
+`getPageDiagnostics()` returns only bounded exception/console-error counts, never
+raw messages. `getClosureStatus()` distinguishes confirmed cleanup from uncertainty
+without suppressing the original policy refusal thrown by `close()`.
 
 The protocol contract checks the actual policy-to-transport boundary, including
 Chromium's XHR preflight label, 204 responses, burst limits, late events and cleanup
@@ -759,10 +766,49 @@ published response equivalence. Download denial and bounded accepted bytes are
 not OS-level network isolation, disk quotas or complete browser-process egress
 coverage. The runtime used locally is not an approved protected-runner pin.
 
+`scripts/controller-uat-browser-matrix.mjs` now connects the read policy to the
+transport interface for a controller-owned 11-role × 10-workspace UI boot matrix.
+Each of 110 cells gets a fresh owned transport; the expected access mapping is
+40 allowed and 70 denied. It requires explicit reviewed feature expectations
+(`null` only for an omitted features field), including canonical platform
+dependency closure. Luopan is checked as a navigation-only link, not an eleventh
+tested workflow. Unknown navigation links are never silently filtered out.
+
+The helper projects minimal session fields, checks structural JWT consistency and
+expiry margins, and injects only at the exact staging top-frame origin. This does
+**not** verify a JWT signature, authenticate an identity, provision a profile or
+revoke a session. No metadata role is used for authorization and no `setSession`
+repair or refresh is attempted. Supabase documents that
+[setSession can refresh expired sessions](https://supabase.com/docs/reference/javascript/auth-setsession)
+and [getSession loads from client storage](https://supabase.com/docs/reference/javascript/auth-getsession);
+neither supplies the missing independent identity validation here.
+
+The DOM probe emits only fixed enums and checks exact document/config, normal or
+workspace-specific denial text, visibility, role and the complete navigation
+list. Bounded idle, repeated readiness and a final DOM/diagnostics recheck catch
+failures occurring after the app becomes visible. A caught load failure is not
+mistaken for a successful boot. An expected denial has its own error-count rule.
+Failures stop the matrix. A healthy failed page may supply a bounded screenshot;
+the browser must confirm termination before a separately bounded retention sink
+runs. An already terminated transport cannot be reopened for a screenshot. A
+late refusal from `close()` still fails the case, even if shutdown is confirmed.
+
+The matrix contract executes its generated scripts against credential-free VM
+fixtures using the actual shell/runtime sources, exercises all 110 cells under
+three feature configurations, and tests real transport-refusal/cleanup integration.
+VM fixtures do not establish real browser application behavior. The separate
+12-case loopback browser fixture checks transport readiness, PNG capture and
+diagnostics; it does not run the clinical application or genuine identities.
+
 These components are **not wired into the candidate browser matrix or the
-nine-gate protected authenticated-UAT entrypoint**. Real application boot and
-clinical journeys, isolated synthetic identities/session revocation, approved
-runtime/network isolation, recovery and genuine staging evidence remain required.
+nine-gate protected authenticated-UAT entrypoint**. The new helper has no CLI or
+default credential/runtime factory. A protected lifecycle must still supply
+independently authenticated isolated session leases, a bounded exclusively-owned
+runtime/egress adapter and protected screenshot retention. UI observations always
+set authorization, authenticated identity, cross-tenant verification, completed
+UAT and deployment permission to false—even when all expected UI states match.
+Real application boot and clinical journeys, synthetic identities/session
+revocation, approved runtime/network isolation, recovery and genuine staging evidence remain required.
 AI technical review cannot supply independent human security approval. The
 protected entrypoint, workflow and deployment gate remain unchanged and inactive.
 Protocol behavior was checked against the official

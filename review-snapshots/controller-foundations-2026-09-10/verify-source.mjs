@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const digest = data => createHash('sha256').update(data).digest('hex');
 const raw = await fs.readFile(path.join(root, 'source-manifest.json'));
-assert.equal(digest(raw), '747a395a3ae07da0c47ceb4f7bcf7d486917a8ec1268194717158ccca903cf7a');
+assert.equal(digest(raw), '0dd9e8b98a4d67ff10f1b759a31ec0e8cea2a57981505eaa57ac5f29878f4e56');
 const manifest = JSON.parse(raw);
 const actual = [];
 async function walk(relative = '') {
@@ -35,11 +35,11 @@ for (const file of manifest.files) {
   assert.equal(digest(bytes), file.sha256, file.path);
   total += bytes.length;
 }
-assert.equal(manifest.fileCount, 82);
+assert.equal(manifest.fileCount, 96);
 assert.equal(actual.length, manifest.fileCount);
 assert.equal(total, manifest.totalBytes);
 assert.equal(manifest.activationAuthorized, false);
 assert.equal(manifest.authenticatedStagingVerified, false);
 assert.equal(manifest.independentSecurityApproval, false);
 assert.equal(manifest.productionAuthorization, false);
-console.log('CNYOS inert review snapshot: 82 source hashes verified; activation remains blocked');
+console.log('CNYOS inert review snapshot: 96 source hashes verified; activation remains blocked');

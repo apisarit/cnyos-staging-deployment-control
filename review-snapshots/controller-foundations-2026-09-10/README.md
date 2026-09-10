@@ -7,15 +7,24 @@ Nothing is added to `.github/workflows`; all workflow templates remain dormant.
 
 ## Provenance and contents
 
-`source-manifest.json` identifies 82 exact files (2,456,092 bytes): 70 controller
-files and 12 source-text dependencies needed by its offline tests. They were
+Revision 2: `source-manifest.json` identifies 96 exact files (2,708,563 bytes):
+72 controller files and 24 source-context dependencies needed by offline tests. They were
 copied byte-for-byte from the dirty engineering checkout based on application
 commit `4e98152f91c65bb7089222145b04620ba919306a`. The manifest hashes, not that
 unchanged base commit, identify the exported work. This package does not change
 the application repository or PR #36 at `dc6c8c776909ed8a3280765d7232ed8eacba955c`.
 
-The ten HTML files and two files under `source/scripts/` are read as test context.
-They are not a runnable application or a complete credentialed verifier. Do not
+The original 82-file revision remains available at
+[commit 0d501b1](https://github.com/apisarit/cnyos-staging-deployment-control/tree/0d501b121de6bd57bdb1a23b08ed8f8c898671b8/review-snapshots/controller-foundations-2026-09-10).
+This revision changes seven existing source files and adds fourteen; the other
+75 remain byte-identical, including the live UAT refusal, policy, finalizer and
+workflow templates. The original frozen local copies were not modified.
+
+The ten HTML files, nine workspace JavaScript files and two files under
+`source/scripts/` are read as test text. The actual shell and runtime are executed
+only in credential-free VM DOM fixtures; `platform-config.js` is a test-only
+import used to compare canonical feature dependencies. These files are not a
+runnable application or a complete credentialed verifier. Do not
 serve this snapshot or execute the candidate staging scripts. There are no root
 application build files, database migrations, deployment credentials, live
 evidence, browser profiles, installed dependencies or browser binaries here.
@@ -42,14 +51,21 @@ local browser evidence concerns inert localhost content, not authenticated stagi
 
 ## What is implemented, and what is still disconnected
 
-The source includes request allowlisting, bounded CDP browser transport, browser
+The source includes request allowlisting, bounded CDP browser transport, exact
+owned-frame/new-loader readiness, in-memory screenshots, sanitized diagnostics,
 termination checks, access-observation comparison, atomic evidence publication,
 source/build comparison, and deployment/recovery boundary foundations. Offline
 tests exercise those components and their refusal paths with synthetic fixtures.
+The new controller-owned UI boot matrix connects the policy and transport
+interfaces for 11 roles × 10 workspaces (40 expected allows, 70 expected denials).
+It checks exact config/features, role/navigation and repeated/final DOM readiness;
+Luopan is explicit navigation-only scope. A late transport refusal remains a
+failure even after confirmed cleanup. Failure-image retention happens only after
+the browser closes and has its own deadline. All output remains non-authorizing.
 
 `controller-authenticated-uat.mjs` still unconditionally refuses live UAT. The
 browser transport is not yet wired into an authorized protected lifecycle with
-ephemeral users, cross-tenant fixtures, complete journey execution, screenshots,
+ephemeral users, cross-tenant fixtures, complete journey execution, protected screenshot retention,
 durable recovery and verified credential cleanup. No placeholder policy value,
 trust root, workflow stop, readiness flag or review requirement is changed here.
 

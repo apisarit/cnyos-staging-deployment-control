@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { deflateSync } from 'node:zlib';
 import { createControllerUatBrowserTransport } from '../scripts/controller-uat-browser-transport.mjs';
 import { createUatBrowserReadPolicy } from '../scripts/controller-uat-browser-read-policy.mjs';
 
@@ -15,6 +16,7 @@ function policy(request) {
 function peer(overrides = {}) {
   const calls = [], responses = new Map(), streams = new Map(), browserPauses = new Map(), released = [];
   let listener, closed = false, active = 0, maxActive = 0;
+  let frame = { id: 'frame-1', loaderId: 'loader-initial', url: 'about:blank' }, navigations = 0;
   const emit = (method, params, sessionId) => {
     if (method === 'Fetch.requestPaused') browserPauses.set(params.requestId, params);
     listener?.({ method, params, sessionId });
@@ -69,6 +71,16 @@ function peer(overrides = {}) {
       if (method === 'IO.close') { streams.delete(params.handle); active--; }
       if (method === 'Fetch.fulfillRequest') browserPauses.delete(params.requestId);
       if (method === 'Runtime.evaluate') return { result: { value: { fixture: true } } };
+      if (method === 'Page.getFrameTree') return { frameTree: { frame: { ...frame } } };
+      if (method === 'Page.navigate') {
+        frame = { id: 'frame-1', loaderId: `loader-${++navigations}`, url: params.url };
+        const current = { ...frame };
+        queueMicrotask(() => {
+          emit('Page.frameNavigated', { frame: current }, 'session-1');
+          emit('Page.lifecycleEvent', { frameId: current.id, loaderId: current.loaderId, name: 'load', timestamp: 1 }, 'session-1');
+        });
+        return { frameId: current.id, loaderId: current.loaderId };
+      }
       return {};
     }
   };
@@ -96,6 +108,7 @@ async function denied(change, code, options = {}) {
     assert.ok(!error.message.includes(marker)); return true;
   });
   await assert.rejects(boundary.close(), { message: `CNYOS_UAT_BROWSER_${code}` });
+  assert.deepEqual(boundary.getClosureStatus(), { cleanupConfirmed: true });
   assert.equal(fixture.closed, true);
   assert.deepEqual(fixture.released, []);
   assert.ok(!fixture.calls.some(call => ['Target.disposeBrowserContext', 'Target.detachFromTarget'].includes(call.method)));
@@ -104,10 +117,12 @@ async function denied(change, code, options = {}) {
 }
 
 const { fixture, boundary } = await setup();
+assert.deepEqual(boundary.getClosureStatus(), { cleanupConfirmed: false });
+assert.ok(Object.isFrozen(boundary.getClosureStatus()));
 const commands = fixture.calls.map(call => call.method);
 const resumed = commands.indexOf('Runtime.runIfWaitingForDebugger');
 for (const method of ['Browser.setDownloadBehavior', 'Target.setAutoAttach', 'Network.setBlockedURLs',
-  'Network.setBypassServiceWorker', 'Fetch.enable', 'Page.enable', 'Runtime.enable', 'Emulation.setTimezoneOverride',
+  'Network.setBypassServiceWorker', 'Fetch.enable', 'Page.enable', 'Page.setLifecycleEventsEnabled', 'Runtime.enable', 'Emulation.setTimezoneOverride',
   'Emulation.setLocaleOverride', 'Emulation.setDeviceMetricsOverride']) {
   assert.ok(commands.indexOf(method) >= 0 && commands.indexOf(method) < resumed, method);
 }
@@ -130,6 +145,7 @@ assert.deepEqual(fixture.calls.find(call => call.method === 'Fetch.continueReque
 assert.deepEqual(await boundary.close(), { closed: true, requestCount: 1, responseBytes: 2,
   authorization: false, authenticatedUatComplete: false, osEgressIsolationVerified: false });
 assert.equal(fixture.closed, true);
+assert.deepEqual(boundary.getClosureStatus(), { cleanupConfirmed: true });
 
 const burst = await setup({}, policy, { maxConcurrentStreams: 2 });
 for (let i = 0; i < 24; i++) burst.fixture.request(`burst-${i}`);
@@ -219,11 +235,13 @@ for (const overrides of [{ closeFails: true }, { unsubscribeFails: true }]) {
   const uncertain = await setup(overrides);
   uncertain.fixture.emit('Network.webSocketCreated', {}, 'session-1');
   await assert.rejects(uncertain.boundary.close(), { message: 'CNYOS_UAT_BROWSER_CLEANUP_UNCONFIRMED' });
+  assert.deepEqual(uncertain.boundary.getClosureStatus(), { cleanupConfirmed: false });
 }
 const cancelFailure = await setup({ send: method => method === 'Fetch.failRequest' ? Promise.reject(new Error(marker)) : undefined });
 cancelFailure.fixture.request('blocked', { request: { url: 'https://unreviewed.invalid/', method: 'GET', headers: {} } });
 await assert.rejects(cancelFailure.boundary.waitForIdle(), /CNYOS_UAT_BROWSER_CLEANUP_UNCONFIRMED/);
 assert.ok(cancelFailure.fixture.closed);
+assert.deepEqual(cancelFailure.boundary.getClosureStatus(), { cleanupConfirmed: false });
 assert.ok(!cancelFailure.fixture.calls.some(call => call.method === 'Target.disposeBrowserContext'));
 
 const cancelStall = await setup({ send: method => method === 'Fetch.failRequest' ? new Promise(() => {}) : undefined }, policy,
@@ -231,6 +249,7 @@ const cancelStall = await setup({ send: method => method === 'Fetch.failRequest'
 cancelStall.fixture.request('blocked', { request: { url: 'https://unreviewed.invalid/', method: 'GET', headers: {} } });
 await assert.rejects(cancelStall.boundary.waitForIdle(), /CNYOS_UAT_BROWSER_CLEANUP_UNCONFIRMED/);
 assert.ok(cancelStall.fixture.closed);
+assert.deepEqual(cancelStall.boundary.getClosureStatus(), { cleanupConfirmed: false });
 assert.ok(!cancelStall.fixture.calls.some(call => call.method === 'Target.disposeBrowserContext'));
 
 const overflow = await setup({}, policy, { maxPendingRequests: 2 });
@@ -257,4 +276,155 @@ assert.ok(late.fixture.calls.some(call => call.method === 'Fetch.failRequest' &&
 assert.deepEqual(late.fixture.released, []);
 await assert.rejects(createControllerUatBrowserTransport({ cdp: { send() {}, onEvent() {}, close() {} }, classifyRequest: policy }),
   /CNYOS_UAT_BROWSER_OPTIONS/);
+// Lifecycle events can arrive before the Page.navigate reply. Only the exact
+// frame + new loader + URL tuple is proof; a generic load event is never proof.
+const navigationReady = await setup();
+assert.deepEqual(await navigationReady.boundary.navigateAndWait(`${origin}/`),
+  { frameId: 'frame-1', loaderId: 'loader-1', url: `${origin}/`, loaded: true });
+assert.deepEqual(await navigationReady.boundary.navigateAndWait(`${origin}/`),
+  { frameId: 'frame-1', loaderId: 'loader-2', url: `${origin}/`, loaded: true });
+await navigationReady.boundary.close();
+
+async function navigationRefused(send, code = 'NAVIGATION_TIMEOUT') {
+  const item = await setup({ send }, policy, { operationTimeoutMs: 35 });
+  await assert.rejects(item.boundary.navigateAndWait(`${origin}/`), { message: `CNYOS_UAT_BROWSER_${code}` });
+  assert.ok(item.fixture.closed);
+  assert.deepEqual(item.fixture.released, []);
+}
+for (const kind of ['old-loader', 'other-frame', 'other-session', 'generic-load', 'only-commit']) {
+  await navigationRefused((method, params, sid, { emit }) => {
+    if (method !== 'Page.navigate') return;
+    emit('Page.frameNavigated', { frame: { id: 'frame-1', loaderId: 'new-loader', url: params.url } }, 'session-1');
+    if (kind === 'generic-load') emit('Page.loadEventFired', { timestamp: 1 }, 'session-1');
+    else if (kind !== 'only-commit') emit('Page.lifecycleEvent', {
+      frameId: kind === 'other-frame' ? 'frame-2' : 'frame-1',
+      loaderId: kind === 'old-loader' ? 'loader-initial' : 'new-loader', name: 'load', timestamp: 1
+    }, kind === 'other-session' ? 'session-2' : 'session-1');
+    return { frameId: 'frame-1', loaderId: 'new-loader' };
+  });
+}
+for (const result of [{ frameId: 'frame-1' }, { frameId: 'frame-1', loaderId: 'loader-initial' },
+  { frameId: 'frame-2', loaderId: 'new-loader' }, { frameId: 'frame-1', loaderId: 'new-loader', errorText: marker },
+  { frameId: 'frame-1', loaderId: 'new-loader', isDownload: true }]) {
+  await navigationRefused(method => method === 'Page.navigate' ? result : undefined, 'NAVIGATION');
+}
+await navigationRefused((method, params, sid, { emit }) => {
+  if (method !== 'Page.navigate') return;
+  emit('Page.frameNavigated', { frame: { id: 'frame-1', loaderId: 'new-loader', url: `${origin}/wrong` } }, 'session-1');
+  return { frameId: 'frame-1', loaderId: 'new-loader' };
+}, 'NAVIGATION_BINDING');
+await navigationRefused((method, params, sid, { emit }) => {
+  if (method !== 'Page.navigate') return;
+  emit('Page.frameNavigated', { frame: { id: 'frame-1', loaderId: 'new-loader', url: params.url } }, 'session-1');
+  emit('Page.lifecycleEvent', { frameId: 'frame-1', loaderId: 'new-loader', name: 'load', timestamp: 1 }, 'session-1');
+  // Peer frame tree deliberately still points at the old document.
+  return { frameId: 'frame-1', loaderId: 'new-loader' };
+}, 'NAVIGATION_BINDING');
+await navigationRefused((method, params, sid, { emit }) => {
+  if (method !== 'Page.navigate') return;
+  for (let i = 0; i < 33; i++) emit('Page.lifecycleEvent', { frameId: 'frame-1', loaderId: `unrelated-${i}`, name: 'load', timestamp: i }, 'session-1');
+  return { frameId: 'frame-1', loaderId: 'new-loader' };
+}, 'NAVIGATION_EVENT_LIMIT');
+
+// A valid locally-generated PNG exercises actual container bytes, not a JPEG
+// mock or a misleading header-only image with incorrect checksums.
+function pngFixture() {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    let crc = 0xffffffff;
+    for (const byte of body) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0); }
+    const length = Buffer.alloc(4), checksum = Buffer.alloc(4);
+    length.writeUInt32BE(data.length); checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    return Buffer.concat([length, body, checksum]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(390); ihdr.writeUInt32BE(844, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(Buffer.alloc((390 * 4 + 1) * 844))), chunk('IEND', Buffer.alloc(0))]);
+}
+const png = pngFixture();
+const screenshot = await setup({ send: method => method === 'Page.captureScreenshot' ? { data: png.toString('base64') } : undefined });
+screenshot.fixture.emit('Runtime.exceptionThrown', { exceptionDetails: { text: marker } }, 'other-session');
+screenshot.fixture.emit('Runtime.exceptionThrown', { exceptionDetails: { text: marker } }, 'session-1');
+screenshot.fixture.emit('Runtime.consoleAPICalled', { type: 'error', args: [{ value: marker }] }, 'session-1');
+screenshot.fixture.emit('Runtime.consoleAPICalled', { type: 'log', args: [{ value: marker }] }, 'session-1');
+assert.deepEqual(screenshot.boundary.getPageDiagnostics(), { exceptionCount: 1, consoleErrorCount: 1 });
+assert.equal(JSON.stringify(screenshot.boundary.getPageDiagnostics()).includes(marker), false);
+assert.deepEqual(await screenshot.boundary.captureScreenshot(), { format: 'png', dataBase64: png.toString('base64'),
+  width: 390, height: 844, byteLength: png.length });
+assert.deepEqual(screenshot.fixture.calls.find(call => call.method === 'Page.captureScreenshot'), {
+  method: 'Page.captureScreenshot', sessionId: 'session-1', params: { format: 'png', fromSurface: true,
+    captureBeyondViewport: false, clip: { x: 0, y: 0, width: 390, height: 844, scale: 1 } }
+});
+await screenshot.boundary.close();
+const wrongDimensions = Buffer.from(png); wrongDimensions.writeUInt32BE(391, 16);
+for (const [data, code, limits] of [
+  [marker, 'SCREENSHOT_BASE64', {}], [png.toString('base64') + '\n', 'SCREENSHOT_BASE64', {}],
+  [png.toString('base64'), 'SCREENSHOT_BASE64', { maxScreenshotBytes: 64 }],
+  [Buffer.from('not a PNG').toString('base64'), 'SCREENSHOT_PNG', {}],
+  [wrongDimensions.toString('base64'), 'SCREENSHOT_PNG', {}],
+  [png.subarray(0, png.length - 4).toString('base64'), 'SCREENSHOT_PNG', {}],
+  [Buffer.concat([png, Buffer.from('tail')]).toString('base64'), 'SCREENSHOT_PNG', {}],
+  [png.toString('base64'), 'AGGREGATE_SIZE', { maxTotalBytes: 64 }]
+]) {
+  const item = await setup({ send: method => method === 'Page.captureScreenshot' ? { data } : undefined }, policy, limits);
+  await assert.rejects(item.boundary.captureScreenshot(), { message: `CNYOS_UAT_BROWSER_${code}` });
+  assert.ok(item.fixture.closed);
+}
+const countLimit = await setup({ send: method => method === 'Page.captureScreenshot' ? { data: png.toString('base64') } : undefined }, policy,
+  { maxScreenshots: 1 });
+await countLimit.boundary.captureScreenshot();
+await assert.rejects(countLimit.boundary.captureScreenshot(), /CNYOS_UAT_BROWSER_SCREENSHOT_LIMIT/);
+assert.equal(countLimit.fixture.calls.filter(call => call.method === 'Page.captureScreenshot').length, 1);
+const diagnosticLimit = await setup();
+for (let i = 0; i < 1025; i++) diagnosticLimit.fixture.emit('Runtime.consoleAPICalled', { type: 'error' }, 'session-1');
+await assert.rejects(diagnosticLimit.boundary.close(), /CNYOS_UAT_BROWSER_DIAGNOSTIC_LIMIT/);
+
+let releaseNavigation;
+const lateNavigation = await setup({ send: method => method === 'Page.navigate' ?
+  new Promise(resolve => { releaseNavigation = resolve; }) : undefined }, policy, { operationTimeoutMs: 25 });
+await assert.rejects(lateNavigation.boundary.navigateAndWait(`${origin}/`), /CNYOS_UAT_BROWSER_(?:NAVIGATION|OPERATION)_TIMEOUT/);
+const callsAfterNavigationStop = lateNavigation.fixture.calls.length;
+releaseNavigation({ frameId: 'frame-1', loaderId: 'late-loader' });
+lateNavigation.fixture.emit('Page.frameNavigated', { frame: { id: 'frame-1', loaderId: 'late-loader', url: `${origin}/` } }, 'session-1');
+lateNavigation.fixture.emit('Page.lifecycleEvent', { frameId: 'frame-1', loaderId: 'late-loader', name: 'load', timestamp: 5 }, 'session-1');
+await tick();
+assert.equal(lateNavigation.fixture.calls.length, callsAfterNavigationStop);
+assert.ok(lateNavigation.fixture.closed);
+
+let releaseScreenshot;
+const lateScreenshot = await setup({ send: method => method === 'Page.captureScreenshot' ?
+  new Promise(resolve => { releaseScreenshot = resolve; }) : undefined }, policy, { operationTimeoutMs: 25 });
+await assert.rejects(lateScreenshot.boundary.captureScreenshot(), /CNYOS_UAT_BROWSER_OPERATION_TIMEOUT/);
+releaseScreenshot({ data: png.toString('base64') });
+await tick();
+assert.ok(lateScreenshot.fixture.closed);
+await assert.rejects(lateScreenshot.boundary.captureScreenshot(), /CNYOS_UAT_BROWSER_OPERATION_TIMEOUT/);
+assert.equal(lateScreenshot.fixture.calls.filter(call => call.method === 'Page.captureScreenshot').length, 1);
+
+let releaseOverlap;
+const overlap = await setup({ send: method => method === 'Page.navigate' ?
+  new Promise(resolve => { releaseOverlap = resolve; }) : undefined });
+const firstNavigation = overlap.boundary.navigateAndWait(`${origin}/`);
+const firstRejected = assert.rejects(firstNavigation, /CNYOS_UAT_BROWSER_PAGE_OPERATION_BUSY/);
+while (!releaseOverlap) await tick();
+await assert.rejects(overlap.boundary.captureScreenshot(), /CNYOS_UAT_BROWSER_PAGE_OPERATION_BUSY/);
+releaseOverlap({ frameId: 'frame-1', loaderId: 'late-loader' });
+await firstRejected;
+assert.ok(overlap.fixture.closed);
+assert.equal(overlap.fixture.calls.filter(call => call.method === 'Page.captureScreenshot').length, 0);
+
+const screenshotUncertain = await setup({ closeFails: true, send: method => method === 'Page.captureScreenshot' ?
+  Promise.reject(new Error(marker)) : undefined });
+await assert.rejects(screenshotUncertain.boundary.captureScreenshot(), { message: 'CNYOS_UAT_BROWSER_CLEANUP_UNCONFIRMED' });
+assert.deepEqual(screenshotUncertain.boundary.getClosureStatus(), { cleanupConfirmed: false });
+
+let finishTermination;
+const pendingClosure = await setup();
+pendingClosure.fixture.cdp.terminate = () => new Promise(resolve => { finishTermination = resolve; });
+const closing = pendingClosure.boundary.close();
+while (!finishTermination) await tick();
+assert.deepEqual(pendingClosure.boundary.getClosureStatus(), { cleanupConfirmed: false });
+finishTermination();
+await closing;
+assert.deepEqual(pendingClosure.boundary.getClosureStatus(), { cleanupConfirmed: true });
 console.log('CNYOS UAT browser transport contract: passed');

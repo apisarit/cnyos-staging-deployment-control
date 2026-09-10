@@ -235,27 +235,13 @@ const classifyRequest = request => {
 let observedVersion;
 let cases = 0;
 const confirmedRefusal = /^(?:CNYOS_UAT_BROWSER_(?:REQUEST_DENIED|RESPONSE_STATUS|RESPONSE_ENCODING_OR_DOWNLOAD|RESPONSE_SIZE|OPERATION_TIMEOUT|GLOBAL_TIMEOUT|TARGET_DENIED|UNSUPPORTED_ACTIVITY)|LOCAL_CDP_CLOSED)$/;
-async function navigateReady(transport, cdp) {
-  // navigate() dispatches only. Pending-request idle is not a DOM-ready signal.
-  // Bind a real frame navigation to this exact local URL, then its load event.
-  let resolveLoaded, timer, committed = false;
-  const loaded = new Promise((resolve, reject) => {
-    resolveLoaded = resolve;
-    timer = setTimeout(() => reject(new Error('LOCAL_PAGE_LOAD_TIMEOUT')), 3000);
-  });
-  loaded.catch(() => {});
-  const unsubscribe = cdp.onEvent(event => {
-    if (event.sessionId !== transport.sessionId) return;
-    if (event.method === 'Page.frameNavigated' && event.params.frame.url === `${origin}/page`) committed = true;
-    if (committed && event.method === 'Page.loadEventFired') resolveLoaded();
-  });
-  try {
-    await transport.navigate(`${origin}/page`);
-    await loaded;
-    await transport.waitForIdle();
-    assert.equal(await transport.evaluate('document.getElementById("ready")?.textContent'), 'ready');
-    transport.assertHealthy();
-  } finally { clearTimeout(timer); unsubscribe(); }
+async function navigateReady(transport) {
+  const navigation = await transport.navigateAndWait(`${origin}/page`);
+  assert.equal(navigation.loaded, true);
+  assert.equal(navigation.url, `${origin}/page`);
+  await transport.waitForIdle();
+  assert.equal(await transport.evaluate('document.getElementById("ready")?.textContent'), 'ready');
+  transport.assertHealthy();
 }
 async function localCase(operation, expectedRefusal = false) {
   received.length = 0;
@@ -267,6 +253,7 @@ async function localCase(operation, expectedRefusal = false) {
   try {
     transport = await createControllerUatBrowserTransport({ cdp, classifyRequest,
       limits: { operationTimeoutMs: 3000, totalTimeoutMs: 20000 } });
+    assert.deepEqual(transport.getClosureStatus(), { cleanupConfirmed: false });
     await operation(transport, cdp);
     cases += 1;
   } finally {
@@ -274,6 +261,7 @@ async function localCase(operation, expectedRefusal = false) {
       if (transport) {
         try { await transport.close(); }
         catch (error) { if (!expectedRefusal || !confirmedRefusal.test(error.message)) throw error; }
+        assert.deepEqual(transport.getClosureStatus(), { cleanupConfirmed: true });
       }
     }
     finally { await cdp.close(); }
@@ -290,6 +278,16 @@ try {
     }).then(r => r.json()).then(v => v.crossFixture)`), true);
     await transport.waitForIdle();
     transport.assertHealthy();
+    assert.deepEqual(transport.getPageDiagnostics(), { exceptionCount: 0, consoleErrorCount: 0 });
+    // A caught application error is counted without retaining its raw payload;
+    // the healthy transport can capture the failure page before owned shutdown.
+    await transport.evaluate('console.error("INERT_LOCAL_ERROR_PAYLOAD"); true');
+    assert.deepEqual(transport.getPageDiagnostics(), { exceptionCount: 0, consoleErrorCount: 1 });
+    const screenshot = await transport.captureScreenshot();
+    assert.equal(screenshot.format, 'png');
+    assert.equal(screenshot.width, 390); assert.equal(screenshot.height, 844);
+    assert.ok(screenshot.byteLength > 57 && screenshot.byteLength <= 2 * 1024 * 1024);
+    assert.equal(Buffer.from(screenshot.dataBase64, 'base64').length, screenshot.byteLength);
     assert.deepEqual(received, ['/page', '/data']);
     assert.deepEqual(crossReceived, [
       { method: 'OPTIONS', path: '/cross-data', preflightMethod: 'POST', preflightHeaders: 'content-type,x-fixture' },

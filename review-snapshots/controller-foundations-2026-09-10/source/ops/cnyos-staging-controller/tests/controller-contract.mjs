@@ -323,6 +323,7 @@ assert.equal(packageManifest.scripts.test,
   'node tests/controller-uat-access-observations-contract.mjs && ' +
   'node tests/controller-uat-browser-read-policy-contract.mjs && ' +
   'node tests/controller-uat-browser-transport-contract.mjs && ' +
+  'node tests/controller-uat-browser-matrix-contract.mjs && ' +
   'node tests/rollback-attestation-deposit-contract.mjs && ' +
   'node tests/release-state-reconciliation-contract.mjs && ' +
   'node tests/netlify-control-file-behavior-contract.mjs && ' +
@@ -434,6 +435,7 @@ const protectedFoundationScripts = [
   'controller-uat-access-observations.mjs',
   'controller-uat-browser-read-policy.mjs',
   'controller-uat-browser-transport.mjs',
+  'controller-uat-browser-matrix.mjs',
   'controller-uat-evidence-publication.mjs',
   'create-producer-bundle.mjs',
   'finalize-evidence.mjs',
@@ -455,6 +457,7 @@ assert.deepEqual(CLOSED_WORLD_TEST_INVENTORY, [
   'controller-uat-access-observations-contract.mjs',
   'controller-uat-browser-read-policy-contract.mjs',
   'controller-uat-browser-transport-contract.mjs',
+  'controller-uat-browser-matrix-contract.mjs',
   'controller-uat-evidence-publication-contract.mjs',
   'controller-contract.mjs',
   'uat-evidence-schema-contract.mjs',
