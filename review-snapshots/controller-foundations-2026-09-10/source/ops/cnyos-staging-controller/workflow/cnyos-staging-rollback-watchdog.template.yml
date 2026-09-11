@@ -1,0 +1,601 @@
+# DORMANT TEMPLATE. This must live on the protected default branch of the
+# separate controller repository. It is independent of the candidate ref.
+name: CNYOS staging rollback watchdog
+
+on:
+  workflow_run:
+    workflows: ["CNYOS staging protected controller"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: cnyos-staging-rollback-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+env:
+  CNYOS_CONTROLLER_PROTECTED_REF: refs/heads/main
+  CNYOS_CONTROLLER_EXPECTED_REPOSITORY: apisarit/cnyos-staging-deployment-control
+  CNYOS_CONTROLLER_WORKFLOW_PATH: .github/workflows/cnyos-staging-rollback-watchdog.yml
+
+jobs:
+  validate_watchdog_activation:
+    name: Validate the protected watchdog before any recovery capability
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Bootstrap stop — intentionally fail closed before any broker capability
+        env:
+          CNYOS_CONTROLLER_BOOTSTRAP_STATE: BLOCKED_UNTIL_SEPARATE_PROTECTED_CONTROLLER_IS_REVIEWED
+          SOURCE_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$CNYOS_CONTROLLER_BOOTSTRAP_STATE" = "REVIEWED_AND_ACTIVATED"
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_REF" = "$CNYOS_CONTROLLER_PROTECTED_REF"
+          test "$GITHUB_REPOSITORY" = "$CNYOS_CONTROLLER_EXPECTED_REPOSITORY"
+          test "$SOURCE_HEAD_BRANCH" = "main"
+          test "$SOURCE_EVENT" = "workflow_dispatch"
+          test "$SOURCE_RUN_ATTEMPT" = "1"
+          echo "$SOURCE_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
+      - name: Check out the exact protected watchdog for activation validation
+        uses: actions/checkout@__PINNED_CHECKOUT_COMMIT_SHA__
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind activation validation to the protected watchdog revision
+        env:
+          EXPECTED_CONTROLLER_COMMIT: ${{ github.sha }}
+        run: |
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_REF" = "$CNYOS_CONTROLLER_PROTECTED_REF"
+          test "$GITHUB_REPOSITORY" = "$CNYOS_CONTROLLER_EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CONTROLLER_COMMIT"
+      - name: Set up the credential-free activation runtime
+        uses: actions/setup-node@__PINNED_SETUP_NODE_COMMIT_SHA__
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: ops/cnyos-staging-controller/package-lock.json
+      - name: Install the reviewed controller lock without lifecycle scripts
+        working-directory: ops/cnyos-staging-controller
+        run: npm ci --ignore-scripts
+      - name: Prove the complete activation boundary without OIDC or credentials
+        working-directory: ops/cnyos-staging-controller
+        run: |
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL+set}"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN+set}"
+          npm test
+          npm run test:activation
+
+  prepare_recovery:
+    name: Prepare a signed recovery plan without Netlify credentials
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    needs: validate_watchdog_activation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: cnyos-staging-rollback
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    outputs:
+      recovery_plan_sha256: ${{ steps.prepare.outputs.recovery_plan_sha256 }}
+      rollback_chain_sha256: ${{ steps.prepare.outputs.rollback_chain_sha256 }}
+      recovery_disposition: ${{ steps.prepare.outputs.recovery_disposition }}
+      terminal_receipt_sha256: ${{ steps.prepare.outputs.terminal_receipt_sha256 }}
+      recovery_terminal_receipt_sha256: ${{ steps.prepare.outputs.recovery_terminal_receipt_sha256 }}
+    steps:
+      - name: Bootstrap stop — intentionally fail closed
+        env:
+          CNYOS_CONTROLLER_BOOTSTRAP_STATE: BLOCKED_UNTIL_SEPARATE_PROTECTED_CONTROLLER_IS_REVIEWED
+          SOURCE_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$CNYOS_CONTROLLER_BOOTSTRAP_STATE" = "REVIEWED_AND_ACTIVATED"
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_REF" = "$CNYOS_CONTROLLER_PROTECTED_REF"
+          test "$GITHUB_REPOSITORY" = "$CNYOS_CONTROLLER_EXPECTED_REPOSITORY"
+          test "$SOURCE_HEAD_BRANCH" = "main"
+          test "$SOURCE_EVENT" = "workflow_dispatch"
+          test "$SOURCE_RUN_ATTEMPT" = "1"
+          echo "$SOURCE_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
+      - name: Check out protected watchdog
+        uses: actions/checkout@__PINNED_CHECKOUT_COMMIT_SHA__
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require the complete controller activation boundary
+        run: |
+          test -f ops/cnyos-staging-controller/package-lock.json
+          test -f ops/cnyos-staging-controller/approver-registry.json
+          test -f ops/cnyos-staging-controller/state/cnyos-staging-known-good.json
+          test -f ops/cnyos-staging-controller/config/cnyos-public-staging.json
+          test -f ops/cnyos-staging-controller/config/cnyos-production-denylist.json
+          test -f ops/cnyos-staging-controller/scripts/controller-function-bundle.mjs
+          test -f ops/cnyos-staging-controller/scripts/controller-static-reproducibility.mjs
+          test -f ops/cnyos-staging-controller/scripts/controller-authenticated-uat.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-runtime-capability-boundary.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-live-netlify-authority-boundary.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-live-github-release-boundary.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-rollback-attestation-deposit.mjs
+          test -f ops/cnyos-staging-controller/scripts/deposit-rollback-attestation.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-netlify-control-file-behavior.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-netlify-exclusive-publisher.mjs
+          test -f ops/cnyos-staging-controller/scripts/release-netlify-exclusive-publisher.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-private-draft-lifecycle.mjs
+          test -f ops/cnyos-staging-controller/scripts/private-draft-access-boundary.mjs
+          test -f ops/cnyos-staging-controller/scripts/create-netlify-draft-with-durable-intent.mjs
+          test -f ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs
+          test -f ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-backup-disable-runtime-boundary.mjs
+          test -f ops/cnyos-staging-controller/scripts/verify-rollback-authorization-chain.mjs
+          test -f ops/cnyos-staging-controller/scripts/rollback-readiness.mjs
+          test -f ops/cnyos-staging-controller/scripts/scheduled-function-route-denial.mjs
+          test -f ops/cnyos-staging-controller/tests/controller-authenticated-uat-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/uat-evidence-schema-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/controller-function-bundle-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/controller-static-reproducibility-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/netlify-control-file-behavior-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/netlify-exclusive-publisher-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/private-draft-lifecycle-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/private-draft-access-boundary-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/draft-mutation-recovery-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/release-state-reconciliation-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/backup-disable-runtime-boundary-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/rollback-authorization-chain-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/rollback-principal-boundary-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/rollback-readiness-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/scheduled-function-route-denial-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/runtime-capability-boundary-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/live-netlify-authority-boundary-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/live-github-release-boundary-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/authorization-foundation-security-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/external-broker-trust-boundaries-contract.mjs
+          test -f ops/cnyos-staging-controller/tests/rollback-attestation-deposit-contract.mjs
+          test -f .github/workflows/cnyos-staging-release.yml
+          test -f .github/workflows/cnyos-staging-rollback-watchdog.yml
+          for protected_file in \
+            ops/cnyos-staging-controller/package.json \
+            ops/cnyos-staging-controller/package-lock.json \
+            ops/cnyos-staging-controller/controller-policy.json \
+            ops/cnyos-staging-controller/approver-registry.json \
+            ops/cnyos-staging-controller/state/cnyos-staging-known-good.json \
+            ops/cnyos-staging-controller/config/cnyos-public-staging.json \
+            ops/cnyos-staging-controller/config/cnyos-production-denylist.json \
+            .github/workflows/cnyos-staging-release.yml \
+            .github/workflows/cnyos-staging-rollback-watchdog.yml
+          do
+            test -f "$protected_file"
+            test ! -L "$protected_file"
+          done
+          ! rg -n '__[A-Z_]+__|BLOCKED_UNTIL' \
+            .github/workflows/cnyos-staging-release.yml \
+            .github/workflows/cnyos-staging-rollback-watchdog.yml \
+            ops/cnyos-staging-controller/controller-policy.json \
+            ops/cnyos-staging-controller/approver-registry.json \
+            ops/cnyos-staging-controller/state/cnyos-staging-known-good.json \
+            ops/cnyos-staging-controller/config/cnyos-public-staging.json \
+            ops/cnyos-staging-controller/config/cnyos-production-denylist.json
+      - name: Set up the protected watchdog test runtime
+        uses: actions/setup-node@__PINNED_SETUP_NODE_COMMIT_SHA__
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: ops/cnyos-staging-controller/package-lock.json
+      - name: Install the reviewed controller lock without lifecycle scripts
+        working-directory: ops/cnyos-staging-controller
+        run: npm ci --ignore-scripts
+      - name: Execute the bootstrap and closed-world activation suites
+        working-directory: ops/cnyos-staging-controller
+        run: |
+          npm test
+          npm run test:activation
+      - name: Retrieve, authenticate, and sanitize exact-run recovery inputs
+        id: prepare
+        env:
+          CNYOS_WATCHDOG_RUN_ID: ${{ github.run_id }}
+          CNYOS_WATCHDOG_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CNYOS_WATCHDOG_CONTROLLER_COMMIT: ${{ github.sha }}
+          CNYOS_TARGET_CONTROLLER_RUN_ID: ${{ github.event.workflow_run.id }}
+          CNYOS_TARGET_CONTROLLER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          CNYOS_TARGET_CONTROLLER_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          CNYOS_TARGET_CONTROLLER_REPOSITORY: ${{ github.event.repository.full_name }}
+          CNYOS_CONTROLLER_POLICY_PATH: ${{ github.workspace }}/ops/cnyos-staging-controller/controller-policy.json
+          CNYOS_CONTROLLER_APPROVER_KEY_REGISTRY_PATH: ${{ github.workspace }}/ops/cnyos-staging-controller/approver-registry.json
+          CNYOS_ROLLBACK_ATTESTATION_BROKER_URL: ${{ vars.CNYOS_ROLLBACK_ATTESTATION_BROKER_URL }}
+          CNYOS_NETLIFY_PUBLISH_BROKER_URL: ${{ vars.CNYOS_NETLIFY_PUBLISH_BROKER_URL }}
+          CNYOS_DRAFT_LIFECYCLE_BROKER_URL: ${{ vars.CNYOS_DRAFT_LIFECYCLE_BROKER_URL }}
+          CNYOS_CONTROLLER_BROKER_RECOVERY_INPUT_DIRECTORY: ${{ runner.temp }}/broker-recovery-inputs
+          CNYOS_CONTROLLER_RECOVERY_PLAN_PATH: ${{ runner.temp }}/sanitized-recovery/recovery-plan.json
+          CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH: ${{ runner.temp }}/sanitized-recovery/rollback-chain-validation.json
+          CNYOS_CONTROLLER_RECOVERY_DISPOSITION_PATH: ${{ runner.temp }}/sanitized-recovery/recovery-disposition.txt
+          CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH: ${{ runner.temp }}/sanitized-recovery/successful-release-terminal.json
+          CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH: ${{ runner.temp }}/sanitized-recovery/recovery-terminal.json
+        run: |
+          for forbidden_name in \
+            CNYOS_GITHUB_ACTIONS_READ_TOKEN \
+            CNYOS_NETLIFY_AUTHORITY_BROKER_URL \
+            CNYOS_NETLIFY_PRINCIPAL_MEMBERSHIP_BROKER_URL \
+            CNYOS_STAGING_NETLIFY_ROLLBACK_TOKEN \
+            CNYOS_STAGING_NETLIFY_AUTH_TOKEN \
+            NETLIFY_AUTH_TOKEN \
+            CNYOS_STAGING_DRAFT_ACCESS_BOUNDARY_TOKEN \
+            CNYOS_CREDENTIAL_SEPARATION_HMAC_KEY \
+            CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY \
+            CNYOS_STAGING_TEST_PASSWORD
+          do
+            if printenv "$forbidden_name" >/dev/null; then
+              echo "forbidden credential environment name is present: $forbidden_name" >&2
+              exit 1
+            fi
+          done
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          node ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs prepare-watchdog-recovery
+          test -f "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH"
+          test ! -L "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH"
+          test -f "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH"
+          test ! -L "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH"
+          recovery_plan_sha256="$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH" | cut -d ' ' -f 1)"
+          rollback_chain_sha256="$(sha256sum "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH" | cut -d ' ' -f 1)"
+          echo "$recovery_plan_sha256" | grep -Eq '^[0-9a-f]{64}$'
+          echo "$rollback_chain_sha256" | grep -Eq '^[0-9a-f]{64}$'
+          test -f "$CNYOS_CONTROLLER_RECOVERY_DISPOSITION_PATH"
+          test ! -L "$CNYOS_CONTROLLER_RECOVERY_DISPOSITION_PATH"
+          recovery_disposition="$(cat "$CNYOS_CONTROLLER_RECOVERY_DISPOSITION_PATH")"
+          terminal_receipt_sha256=""
+          recovery_terminal_receipt_sha256=""
+          case "$recovery_disposition" in
+            recovery_required)
+              test ! -e "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH"
+              test ! -e "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH"
+              ;;
+            terminal_success_rehydrated)
+              test -f "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH"
+              test ! -L "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH"
+              test ! -e "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH"
+              terminal_receipt_sha256="$(sha256sum "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH" | cut -d ' ' -f 1)"
+              echo "$terminal_receipt_sha256" | grep -Eq '^[0-9a-f]{64}$'
+              ;;
+            terminal_recovery_rehydrated)
+              test ! -e "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH"
+              test -f "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH"
+              test ! -L "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH"
+              recovery_terminal_receipt_sha256="$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH" | cut -d ' ' -f 1)"
+              echo "$recovery_terminal_receipt_sha256" | grep -Eq '^[0-9a-f]{64}$'
+              ;;
+            *)
+              echo "invalid recovery disposition" >&2
+              exit 1
+              ;;
+          esac
+          echo "recovery_plan_sha256=$recovery_plan_sha256" >> "$GITHUB_OUTPUT"
+          echo "rollback_chain_sha256=$rollback_chain_sha256" >> "$GITHUB_OUTPUT"
+          echo "recovery_disposition=$recovery_disposition" >> "$GITHUB_OUTPUT"
+          echo "terminal_receipt_sha256=$terminal_receipt_sha256" >> "$GITHUB_OUTPUT"
+          echo "recovery_terminal_receipt_sha256=$recovery_terminal_receipt_sha256" >> "$GITHUB_OUTPUT"
+      - name: Retain only the sanitized signed plan and validated authorization chain
+        uses: actions/upload-artifact@__PINNED_UPLOAD_ARTIFACT_COMMIT_SHA__
+        with:
+          name: cnyos-watchdog-plan-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/sanitized-recovery/recovery-plan.json
+            ${{ runner.temp }}/sanitized-recovery/rollback-chain-validation.json
+            ${{ runner.temp }}/sanitized-recovery/recovery-disposition.txt
+            ${{ runner.temp }}/sanitized-recovery/successful-release-terminal.json
+            ${{ runner.temp }}/sanitized-recovery/recovery-terminal.json
+          if-no-files-found: error
+          retention-days: 365
+
+  execute_recovery:
+    name: Execute only the hash-bound rollback plan with the rollback principal
+    if: ${{ always() && needs.prepare_recovery.result == 'success' && needs.prepare_recovery.outputs.recovery_disposition == 'recovery_required' }}
+    needs: prepare_recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: cnyos-staging-rollback
+    permissions:
+      actions: read
+      contents: read
+      id-token: none
+    outputs:
+      execution_receipt_sha256: ${{ steps.execute.outputs.execution_receipt_sha256 }}
+    steps:
+      - name: Check out the exact protected watchdog revision
+        uses: actions/checkout@__PINNED_CHECKOUT_COMMIT_SHA__
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind execution to the protected controller revision
+        env:
+          EXPECTED_CONTROLLER_COMMIT: ${{ github.sha }}
+        run: |
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_REF" = "$CNYOS_CONTROLLER_PROTECTED_REF"
+          test "$GITHUB_REPOSITORY" = "$CNYOS_CONTROLLER_EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CONTROLLER_COMMIT"
+      - name: Set up the reviewed execution runtime
+        uses: actions/setup-node@__PINNED_SETUP_NODE_COMMIT_SHA__
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: ops/cnyos-staging-controller/package-lock.json
+      - name: Install the reviewed controller lock without lifecycle scripts
+        working-directory: ops/cnyos-staging-controller
+        run: npm ci --ignore-scripts
+      - name: Download the exact sanitized recovery plan
+        uses: actions/download-artifact@__PINNED_DOWNLOAD_ARTIFACT_COMMIT_SHA__
+        with:
+          name: cnyos-watchdog-plan-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/recovery-plan
+      - name: Verify downloaded recovery evidence before exposing the rollback token
+        env:
+          CNYOS_CONTROLLER_RECOVERY_PLAN_PATH: ${{ runner.temp }}/recovery-plan/recovery-plan.json
+          CNYOS_EXPECTED_RECOVERY_PLAN_SHA256: ${{ needs.prepare_recovery.outputs.recovery_plan_sha256 }}
+          CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH: ${{ runner.temp }}/recovery-plan/rollback-chain-validation.json
+          CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256: ${{ needs.prepare_recovery.outputs.rollback_chain_sha256 }}
+        run: |
+          test -f "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH"
+          test ! -L "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH"
+          test -f "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH"
+          test ! -L "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH"
+          echo "$CNYOS_EXPECTED_RECOVERY_PLAN_SHA256" | grep -Eq '^[0-9a-f]{64}$'
+          echo "$CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256" | grep -Eq '^[0-9a-f]{64}$'
+          test "$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_RECOVERY_PLAN_SHA256"
+          test "$(sha256sum "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256"
+      - name: Conditionally restore and clean up only plan-authorized Netlify objects
+        id: execute
+        env:
+          CNYOS_STAGING_NETLIFY_ROLLBACK_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_ROLLBACK_TOKEN }}
+          CNYOS_WATCHDOG_RUN_ID: ${{ github.run_id }}
+          CNYOS_WATCHDOG_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CNYOS_WATCHDOG_CONTROLLER_COMMIT: ${{ github.sha }}
+          CNYOS_TARGET_CONTROLLER_RUN_ID: ${{ github.event.workflow_run.id }}
+          CNYOS_TARGET_CONTROLLER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          CNYOS_TARGET_CONTROLLER_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          CNYOS_TARGET_CONTROLLER_REPOSITORY: ${{ github.event.repository.full_name }}
+          CNYOS_CONTROLLER_POLICY_PATH: ${{ github.workspace }}/ops/cnyos-staging-controller/controller-policy.json
+          CNYOS_CONTROLLER_RECOVERY_PLAN_PATH: ${{ runner.temp }}/recovery-plan/recovery-plan.json
+          CNYOS_EXPECTED_RECOVERY_PLAN_SHA256: ${{ needs.prepare_recovery.outputs.recovery_plan_sha256 }}
+          CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH: ${{ runner.temp }}/recovery-plan/rollback-chain-validation.json
+          CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256: ${{ needs.prepare_recovery.outputs.rollback_chain_sha256 }}
+          CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH: ${{ runner.temp }}/recovery-execution/recovery-execution-receipt.json
+          CNYOS_REQUIRED_RECOVERY_DISPOSITION: recovery_required
+        run: |
+          for forbidden_name in \
+            ACTIONS_ID_TOKEN_REQUEST_URL \
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            CNYOS_GITHUB_ACTIONS_READ_TOKEN \
+            CNYOS_ROLLBACK_ATTESTATION_BROKER_URL \
+            CNYOS_NETLIFY_PUBLISH_BROKER_URL \
+            CNYOS_DRAFT_LIFECYCLE_BROKER_URL \
+            CNYOS_NETLIFY_AUTHORITY_BROKER_URL \
+            CNYOS_NETLIFY_PRINCIPAL_MEMBERSHIP_BROKER_URL \
+            CNYOS_STAGING_NETLIFY_AUTH_TOKEN \
+            NETLIFY_AUTH_TOKEN \
+            CNYOS_STAGING_DRAFT_ACCESS_BOUNDARY_TOKEN \
+            CNYOS_CREDENTIAL_SEPARATION_HMAC_KEY \
+            CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY \
+            CNYOS_STAGING_TEST_PASSWORD
+          do
+            if printenv "$forbidden_name" >/dev/null; then
+              echo "forbidden execution environment name is present: $forbidden_name" >&2
+              exit 1
+            fi
+          done
+          test -n "$CNYOS_STAGING_NETLIFY_ROLLBACK_TOKEN"
+          test "$CNYOS_REQUIRED_RECOVERY_DISPOSITION" = "recovery_required"
+          test "$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_RECOVERY_PLAN_SHA256"
+          test "$(sha256sum "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256"
+          node ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs execute-watchdog-recovery-plan
+          test -f "$CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH"
+          test ! -L "$CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH"
+          execution_receipt_sha256="$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH" | cut -d ' ' -f 1)"
+          echo "$execution_receipt_sha256" | grep -Eq '^[0-9a-f]{64}$'
+          echo "execution_receipt_sha256=$execution_receipt_sha256" >> "$GITHUB_OUTPUT"
+      - name: Retain the exact recovery execution receipt
+        uses: actions/upload-artifact@__PINNED_UPLOAD_ARTIFACT_COMMIT_SHA__
+        with:
+          name: cnyos-watchdog-execution-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/recovery-execution/recovery-execution-receipt.json
+          if-no-files-found: error
+          retention-days: 365
+
+  finalize_recovery:
+    name: Finalize broker state without any Netlify credential
+    if: ${{ always() && github.event.workflow_run.conclusion != 'success' && needs.validate_watchdog_activation.result == 'success' }}
+    needs: [validate_watchdog_activation, prepare_recovery, execute_recovery]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: cnyos-staging-rollback
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the exact protected watchdog revision
+        uses: actions/checkout@__PINNED_CHECKOUT_COMMIT_SHA__
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind finalization to the protected controller revision
+        env:
+          EXPECTED_CONTROLLER_COMMIT: ${{ github.sha }}
+        run: |
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_REF" = "$CNYOS_CONTROLLER_PROTECTED_REF"
+          test "$GITHUB_REPOSITORY" = "$CNYOS_CONTROLLER_EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CONTROLLER_COMMIT"
+      - name: Set up the reviewed finalization runtime
+        uses: actions/setup-node@__PINNED_SETUP_NODE_COMMIT_SHA__
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: ops/cnyos-staging-controller/package-lock.json
+      - name: Install the reviewed controller lock without lifecycle scripts
+        working-directory: ops/cnyos-staging-controller
+        run: npm ci --ignore-scripts
+      - name: Download the exact sanitized recovery plan
+        id: download_recovery_plan
+        continue-on-error: true
+        uses: actions/download-artifact@__PINNED_DOWNLOAD_ARTIFACT_COMMIT_SHA__
+        with:
+          name: cnyos-watchdog-plan-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/recovery-plan
+      - name: Download the execution receipt only after successful execution
+        id: download_execution_receipt
+        if: ${{ always() && needs.execute_recovery.result == 'success' && needs.execute_recovery.outputs.execution_receipt_sha256 != '' }}
+        continue-on-error: true
+        uses: actions/download-artifact@__PINNED_DOWNLOAD_ARTIFACT_COMMIT_SHA__
+        with:
+          name: cnyos-watchdog-execution-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/recovery-execution
+      - name: Finalize only verified success or record incomplete recovery
+        if: always()
+        env:
+          CNYOS_RECOVERY_PREPARATION_JOB_RESULT: ${{ needs.prepare_recovery.result }}
+          CNYOS_RECOVERY_PLAN_DOWNLOAD_OUTCOME: ${{ steps.download_recovery_plan.outcome }}
+          CNYOS_RECOVERY_EXECUTION_RECEIPT_DOWNLOAD_OUTCOME: ${{ steps.download_execution_receipt.outcome }}
+          CNYOS_RECOVERY_EXECUTION_JOB_RESULT: ${{ needs.execute_recovery.result }}
+          CNYOS_RECOVERY_DISPOSITION: ${{ needs.prepare_recovery.outputs.recovery_disposition }}
+          CNYOS_WATCHDOG_RUN_ID: ${{ github.run_id }}
+          CNYOS_WATCHDOG_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CNYOS_WATCHDOG_CONTROLLER_COMMIT: ${{ github.sha }}
+          CNYOS_TARGET_CONTROLLER_RUN_ID: ${{ github.event.workflow_run.id }}
+          CNYOS_TARGET_CONTROLLER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          CNYOS_TARGET_CONTROLLER_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          CNYOS_TARGET_CONTROLLER_REPOSITORY: ${{ github.event.repository.full_name }}
+          CNYOS_CONTROLLER_POLICY_PATH: ${{ github.workspace }}/ops/cnyos-staging-controller/controller-policy.json
+          CNYOS_CONTROLLER_RECOVERY_PLAN_PATH: ${{ runner.temp }}/recovery-plan/recovery-plan.json
+          CNYOS_EXPECTED_RECOVERY_PLAN_SHA256: ${{ needs.prepare_recovery.outputs.recovery_plan_sha256 }}
+          CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH: ${{ runner.temp }}/recovery-plan/rollback-chain-validation.json
+          CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256: ${{ needs.prepare_recovery.outputs.rollback_chain_sha256 }}
+          CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH: ${{ runner.temp }}/recovery-execution/recovery-execution-receipt.json
+          CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256: ${{ needs.execute_recovery.outputs.execution_receipt_sha256 }}
+          CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH: ${{ runner.temp }}/recovery-plan/successful-release-terminal.json
+          CNYOS_EXPECTED_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_SHA256: ${{ needs.prepare_recovery.outputs.terminal_receipt_sha256 }}
+          CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH: ${{ runner.temp }}/recovery-plan/recovery-terminal.json
+          CNYOS_EXPECTED_RECOVERY_TERMINAL_EVIDENCE_SHA256: ${{ needs.prepare_recovery.outputs.recovery_terminal_receipt_sha256 }}
+          CNYOS_ROLLBACK_ATTESTATION_BROKER_URL: ${{ vars.CNYOS_ROLLBACK_ATTESTATION_BROKER_URL }}
+          CNYOS_NETLIFY_PUBLISH_BROKER_URL: ${{ vars.CNYOS_NETLIFY_PUBLISH_BROKER_URL }}
+          CNYOS_DRAFT_LIFECYCLE_BROKER_URL: ${{ vars.CNYOS_DRAFT_LIFECYCLE_BROKER_URL }}
+          CNYOS_CONTROLLER_RECOVERY_FINALIZATION_EVIDENCE_PATH: ${{ runner.temp }}/recovery-finalization/recovery-finalization.json
+        run: |
+          for forbidden_name in \
+            CNYOS_GITHUB_ACTIONS_READ_TOKEN \
+            CNYOS_NETLIFY_AUTHORITY_BROKER_URL \
+            CNYOS_NETLIFY_PRINCIPAL_MEMBERSHIP_BROKER_URL \
+            CNYOS_STAGING_NETLIFY_ROLLBACK_TOKEN \
+            CNYOS_STAGING_NETLIFY_AUTH_TOKEN \
+            NETLIFY_AUTH_TOKEN \
+            CNYOS_STAGING_DRAFT_ACCESS_BOUNDARY_TOKEN \
+            CNYOS_CREDENTIAL_SEPARATION_HMAC_KEY \
+            CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY \
+            CNYOS_STAGING_TEST_PASSWORD
+          do
+            if printenv "$forbidden_name" >/dev/null; then
+              echo "forbidden finalization credential environment name is present: $forbidden_name" >&2
+              exit 1
+            fi
+          done
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          recovery_inputs_verified=false
+          if test "$CNYOS_RECOVERY_PREPARATION_JOB_RESULT" = "success" && \
+             test "$CNYOS_RECOVERY_PLAN_DOWNLOAD_OUTCOME" = "success" && \
+             echo "$CNYOS_EXPECTED_RECOVERY_PLAN_SHA256" | grep -Eq '^[0-9a-f]{64}$' && \
+             echo "$CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256" | grep -Eq '^[0-9a-f]{64}$' && \
+             test -f "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH" && \
+             test ! -L "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH" && \
+             test -f "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH" && \
+             test ! -L "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH" && \
+             test "$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_PLAN_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_RECOVERY_PLAN_SHA256" && \
+             test "$(sha256sum "$CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256"
+          then
+            recovery_inputs_verified=true
+          fi
+          execution_receipt_verified=false
+          if test "$CNYOS_RECOVERY_EXECUTION_JOB_RESULT" = "success" && \
+             test "$CNYOS_RECOVERY_EXECUTION_RECEIPT_DOWNLOAD_OUTCOME" = "success" && \
+             echo "$CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256" | grep -Eq '^[0-9a-f]{64}$' && \
+             test -f "$CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH" && \
+             test ! -L "$CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH" && \
+             test "$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256"
+          then
+            execution_receipt_verified=true
+          fi
+          terminal_success_verified=false
+          if test "$recovery_inputs_verified" = "true" && \
+             test "$CNYOS_RECOVERY_DISPOSITION" = "terminal_success_rehydrated" && \
+             echo "$CNYOS_EXPECTED_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_SHA256" | grep -Eq '^[0-9a-f]{64}$' && \
+             test -f "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH" && \
+             test ! -L "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH" && \
+             test "$(sha256sum "$CNYOS_CONTROLLER_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_SUCCESSFUL_RELEASE_TERMINAL_EVIDENCE_SHA256"
+          then
+            terminal_success_verified=true
+          fi
+          terminal_recovery_verified=false
+          if test "$recovery_inputs_verified" = "true" && \
+             test "$CNYOS_RECOVERY_DISPOSITION" = "terminal_recovery_rehydrated" && \
+             echo "$CNYOS_EXPECTED_RECOVERY_TERMINAL_EVIDENCE_SHA256" | grep -Eq '^[0-9a-f]{64}$' && \
+             test -f "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH" && \
+             test ! -L "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH" && \
+             test "$(sha256sum "$CNYOS_CONTROLLER_RECOVERY_TERMINAL_EVIDENCE_PATH" | cut -d ' ' -f 1)" = "$CNYOS_EXPECTED_RECOVERY_TERMINAL_EVIDENCE_SHA256"
+          then
+            terminal_recovery_verified=true
+          fi
+          if test "$recovery_inputs_verified" = "true" && \
+             test "$CNYOS_RECOVERY_DISPOSITION" = "recovery_required" && \
+             test "$execution_receipt_verified" = "true"
+          then
+            node ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs finalize-watchdog-recovery-success
+          elif test "$terminal_success_verified" = "true"; then
+            node ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs finalize-rehydrated-successful-release
+          elif test "$terminal_recovery_verified" = "true"; then
+            node ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs finalize-rehydrated-recovery
+          else
+            if test "$recovery_inputs_verified" != "true"; then
+              unset CNYOS_CONTROLLER_RECOVERY_PLAN_PATH
+              unset CNYOS_EXPECTED_RECOVERY_PLAN_SHA256
+              unset CNYOS_CONTROLLER_ROLLBACK_CHAIN_EVIDENCE_PATH
+              unset CNYOS_EXPECTED_ROLLBACK_CHAIN_EVIDENCE_SHA256
+              export CNYOS_RECOVERY_INCOMPLETE_REASON="unverified_recovery_inputs"
+            elif test "$CNYOS_RECOVERY_DISPOSITION" = "terminal_success_rehydrated"; then
+              unset CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH
+              unset CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256
+              export CNYOS_RECOVERY_INCOMPLETE_REASON="unverified_terminal_success_receipt"
+            elif test "$CNYOS_RECOVERY_DISPOSITION" = "terminal_recovery_rehydrated"; then
+              unset CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH
+              unset CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256
+              export CNYOS_RECOVERY_INCOMPLETE_REASON="unverified_terminal_recovery_receipt"
+            elif test "$CNYOS_RECOVERY_EXECUTION_JOB_RESULT" != "success"; then
+              unset CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH
+              unset CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256
+              export CNYOS_RECOVERY_INCOMPLETE_REASON="execution_job_not_successful"
+            else
+              unset CNYOS_CONTROLLER_RECOVERY_EXECUTION_RECEIPT_PATH
+              unset CNYOS_EXPECTED_RECOVERY_EXECUTION_RECEIPT_SHA256
+              export CNYOS_RECOVERY_INCOMPLETE_REASON="unverified_execution_receipt"
+            fi
+            node ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs record-incomplete-watchdog-recovery
+          fi
+          test -f "$CNYOS_CONTROLLER_RECOVERY_FINALIZATION_EVIDENCE_PATH"
+          test ! -L "$CNYOS_CONTROLLER_RECOVERY_FINALIZATION_EVIDENCE_PATH"
+      - name: Retain the broker finalization or incomplete-recovery record
+        if: always()
+        uses: actions/upload-artifact@__PINNED_UPLOAD_ARTIFACT_COMMIT_SHA__
+        with:
+          name: cnyos-watchdog-finalization-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/recovery-finalization/recovery-finalization.json
+          if-no-files-found: error
+          retention-days: 365

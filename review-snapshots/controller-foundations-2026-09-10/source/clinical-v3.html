@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Clinical Workspace</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-department1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-ia1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=clinical-os-ia1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-department1"></script>
+  <script defer src="clinical-v3.js?v=clinical-os-department1"></script>
+  <script defer src="clinical-context-guard.js?v=clinical-os-ia1"></script>
+  <script defer src="body-pain-map.js?v=clinical-os-department1"></script>
+  <script defer src="ttm-diagnosis-assistant.js?v=clinical-os-ia1"></script>
+  <script defer src="diagnosis-atomic-bridge.js?v=clinical-os-ia1"></script>
+  <script defer src="opd-workflow.js?v=clinical-os-ia1"></script>
+  <script defer src="clinical-signoff.js?v=clinical-os-ia1"></script>
+</head>
+<body data-page="clinical">
+  <div id="boot"><div><div class="spinner"></div><h2>กำลังเปิด Clinical Workspace</h2><p id="boot-error">กำลังตรวจสอบสิทธิ์และเวชระเบียน</p></div></div>
+
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span></a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Practitioner-authored record<br>Human review is authoritative</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+
+    <div class="workspace">
+      <header class="top">
+        <div class="actions">
+          <button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button>
+          <div class="top-title"><span class="page-kicker">Clinical Workspace</span><h1>เวชระเบียนแพทย์แผนไทย</h1></div>
+        </div>
+        <div class="actions">
+          <div class="identity-block"><small id="identity"></small></div>
+          <span class="badge" id="role">viewer</span>
+          <button class="btn ghost" id="logout">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <main>
+        <div class="clinical-layout">
+          <aside class="encounter-rail">
+            <section class="card encounter-picker">
+              <h2>Encounter ที่กำลังทำงาน</h2>
+              <p class="muted">ทุกข้อมูลด้านขวาจะผูกกับ Encounter นี้</p>
+              <label>เลือก Encounter<select id="encounter" required><option value="">เลือก Encounter</option></select></label>
+              <div id="encounter-info" class="status space-top-xs">เลือก Encounter หรือเปิด Visit ใหม่</div>
+            </section>
+
+            <section id="clinical-context-guard" class="card" aria-live="polite">
+              <div class="ccg-head"><strong>บริบทและความพร้อม</strong><span id="ccg-state">เลือก Encounter</span></div>
+              <div class="ccg-grid">
+                <div class="ccg-cell"><small>ผู้รับบริการ</small><b id="ccg-patient">—</b><span id="ccg-demographic">—</span></div>
+                <div class="ccg-cell"><small>Encounter</small><b id="ccg-encounter">—</b><span id="ccg-encounter-meta">—</span></div>
+                <div class="ccg-cell"><small>อาการสำคัญ</small><span id="ccg-chief">—</span></div>
+                <div class="ccg-cell" id="ccg-allergy-box"><small>Allergy / ข้อควรระวัง</small><div id="ccg-allergies">ยังไม่เลือก Encounter</div></div>
+                <div class="ccg-cell" id="ccg-redflag-box"><small>Red flags / ผลตรวจเดิม</small><div id="ccg-redflags">ยังไม่เลือก Encounter</div></div>
+                <div class="ccg-cell"><small>Sign-off readiness</small><div class="ccg-chips" id="ccg-readiness"></div></div>
+              </div>
+            </section>
+
+            <nav class="workflow-nav" aria-label="ลำดับเวชระเบียน">
+              <button class="active" data-clinical-step="intake"><span class="workflow-index">1</span><span class="workflow-copy"><b>Visit intake</b><small>เปิด Encounter</small></span><span class="workflow-state" data-step-state="intake"></span></button>
+              <button data-clinical-step="history"><span class="workflow-index">2</span><span class="workflow-copy"><b>ประวัติ</b><small>OPD & lifestyle</small></span><span class="workflow-state" data-step-state="history"></span></button>
+              <button data-clinical-step="exam"><span class="workflow-index">3</span><span class="workflow-copy"><b>ตรวจร่างกาย</b><small>Finding & pain map</small></span><span class="workflow-state" data-step-state="exam"></span></button>
+              <button data-clinical-step="diagnosis"><span class="workflow-index">4</span><span class="workflow-copy"><b>วินิจฉัยแผนไทย</b><small>สมุฏฐานและพิกัด</small></span><span class="workflow-state" data-step-state="diagnosis"></span></button>
+              <button data-clinical-step="treatment"><span class="workflow-index">5</span><span class="workflow-copy"><b>แผนและการรักษา</b><small>Plan & outcome</small></span><span class="workflow-state" data-step-state="treatment"></span></button>
+              <button data-clinical-step="prescription"><span class="workflow-index">6</span><span class="workflow-copy"><b>ใบสั่งยา</b><small>ส่งห้องยา</small></span><span class="workflow-state" data-step-state="prescription"></span></button>
+              <button data-clinical-step="signoff"><span class="workflow-index">7</span><span class="workflow-copy"><b>ลงนาม</b><small>Review & lock</small></span><span class="workflow-state" data-step-state="signoff"></span></button>
+            </nav>
+          </aside>
+
+          <div>
+            <div id="clinical-record-fields">
+              <section class="card clinical-stage active" data-stage="intake">
+                <div class="section-heading"><span class="section-number">1</span><div><h2>เปิด Visit / Initial Encounter</h2><p>บันทึกอาการสำคัญ ประวัติปัจจุบัน สัญญาณชีพ และข้อมูลคัดกรองก่อนเข้าสู่เวชระเบียน</p></div></div>
+                <div class="notice space-bottom-md"><b>ทางเลือกที่เร็วและตรวจสอบได้</b><br><a href="/check-in.html">เปิด Patient Check-in เพื่อสแกน LINE QR หรือค้น HN</a> แล้วระบบจะกลับมายัง Encounter นี้โดยอัตโนมัติ</div>
+                <form class="form" id="encounter-form">
+                  <label class="full">ผู้รับบริการ<select id="enc-patient" required></select></label>
+                  <label class="full">อาการสำคัญ<textarea id="enc-chief" required></textarea></label>
+                  <label class="full">ประวัติปัจจุบัน<textarea id="enc-history"></textarea></label>
+                  <label class="full">ประวัติอดีต<textarea id="enc-past"></textarea></label>
+                  <label class="full">ยา / สมุนไพร / อาหารเสริมที่ใช้อยู่<textarea id="enc-meds"></textarea></label>
+                  <label>อุณหภูมิ<input id="enc-temp" type="number" step=".1"></label>
+                  <label>ชีพจร<input id="enc-pulse" type="number"></label>
+                  <label>หายใจ<input id="enc-rr" type="number"></label>
+                  <label>BP<input id="enc-bp" placeholder="120/80"></label>
+                  <label>SpO₂<input id="enc-spo2" type="number"></label>
+                  <label>Pain แรกรับ<input id="enc-before" type="number" min="0" max="10"></label>
+                  <label class="full">Red flags / ข้อควรส่งต่อ<textarea id="enc-redflags"></textarea></label>
+                  <label class="full">ผลตรวจคัดกรองทั่วไป<textarea id="enc-exam"></textarea></label>
+                  <label>วิธียืนยันผู้รับบริการ<select id="enc-verification-method" required><option value="demographic_match">ชื่อ + วันเกิด/โทรศัพท์ตรงกัน</option><option value="manual_hn">บัตร HN / แจ้ง HN</option><option value="government_id">ตรวจบัตรที่ออกโดยรัฐ</option><option value="guardian_attestation">ผู้ดูแลยืนยันแทน</option></select></label>
+                  <label>หมายเหตุการยืนยัน<textarea id="enc-verification-note" placeholder="ระบุชื่อ/ความสัมพันธ์เมื่อผู้ดูแลยืนยันแทน"></textarea></label>
+                  <label class="full check-row identity-present-check"><input type="checkbox" id="enc-identity-confirmed" required>ตรวจสอบชื่อและข้อมูลระบุตัวกับผู้รับบริการ/ผู้ดูแลแล้ว</label>
+                  <button class="btn primary full">เปิด Encounter และทำงานต่อ</button>
+                </form>
+              </section>
+
+              <section class="card clinical-stage" id="opd-history-section" data-stage="history">
+                <div class="section-heading"><span class="section-number">2</span><div><h2>OPD History / ประวัติส่วนตัว</h2><p>Snapshot ของประวัติและปัจจัยการดำเนินชีวิต ณ Visit นี้</p></div></div>
+                <form id="opd-history-form" class="opd-grid">
+                  <label class="full">ประวัติอุบัติเหตุ<textarea id="opd-accident"></textarea></label>
+                  <label class="full">ประวัติผ่าตัด<textarea id="opd-surgery"></textarea></label>
+                  <label class="full">โรคประจำตัว<textarea id="opd-chronic"></textarea></label>
+                  <label class="full">ประวัติครอบครัว<textarea id="opd-family"></textarea></label>
+                  <label class="full">ประวัติส่วนตัว<textarea id="opd-personal"></textarea></label>
+                  <label>อาหาร<input id="opd-food"></label><label>น้ำ (แก้ว/วัน)<input id="opd-water" type="number" min="0" step="0.5"></label>
+                  <label>ชา/กาแฟ (แก้ว/วัน)<input id="opd-coffee" type="number" min="0" step="0.5"></label><label>บุหรี่<input id="opd-smoking" placeholder="ไม่สูบ / จำนวนมวนต่อวัน"></label>
+                  <label>แอลกอฮอล์<input id="opd-alcohol"></label><label>ปัสสาวะ (ครั้ง/วัน)<input id="opd-urination" type="number" min="0" step="0.5"></label>
+                  <label>อุจจาระ (ครั้ง/วัน)<input id="opd-bowel" type="number" min="0" step="0.5"></label><label>การนอน<input id="opd-sleep"></label>
+                  <label>อิริยาบถ<input id="opd-posture"></label><label>อารมณ์<input id="opd-emotion"></label>
+                  <label>การแพ้ยา/อาหาร<input id="opd-allergy"></label><label>ประจำเดือน<input id="opd-menstruation"></label>
+                  <label class="full">ยา / อาหารเสริมที่ใช้อยู่<textarea id="opd-meds"></textarea></label>
+                  <label class="full">ตรวจร่างกายเพิ่มเติม / Narrative<textarea id="opd-physical"></textarea></label>
+                  <button class="btn primary full" type="submit">บันทึก OPD History</button>
+                </form>
+                <div id="opd-history-status" class="status space-top-sm">เลือก Encounter ก่อน</div>
+              </section>
+
+              <section class="clinical-stage" data-stage="exam">
+                <section class="card">
+                  <div class="section-heading"><span class="section-number">3A</span><div><h2>การตรวจร่างกายแบบโครงสร้าง</h2><p>แยก finding เป็นรายการเพื่อให้ติดตามและ audit ได้</p></div></div>
+                  <form id="exam-form" class="form">
+                    <label>บริเวณตรวจ<input id="exam-region" required placeholder="เช่น คอ บ่า ไหล่ เข่า หลังส่วนล่าง"></label>
+                    <label>ด้าน<select id="exam-side"><option value="midline">กึ่งกลาง</option><option value="left">ซ้าย</option><option value="right">ขวา</option><option value="bilateral">สองข้าง</option><option value="not_applicable">ไม่เกี่ยวข้อง</option></select></label>
+                    <div class="full checkgrid">
+                      <label><input type="checkbox" id="exam-tenderness">กดเจ็บ</label><label><input type="checkbox" id="exam-swelling">บวม</label>
+                      <label><input type="checkbox" id="exam-warmth">ร้อน</label><label><input type="checkbox" id="exam-redness">แดง</label>
+                      <label><input type="checkbox" id="exam-numbness">ชา</label><label><input type="checkbox" id="exam-tightness">กล้ามเนื้อตึง</label>
+                    </div>
+                    <label>การเคลื่อนไหว<select id="exam-rom"><option value="not_assessed">ยังไม่ประเมิน</option><option value="normal">ปกติ</option><option value="limited">จำกัด</option><option value="painful">เจ็บขณะเคลื่อนไหว</option><option value="unable">ทำไม่ได้</option></select></label>
+                    <label>ความรุนแรง 0–10<input id="exam-severity" type="number" min="0" max="10"></label>
+                    <label class="full">รายละเอียดการเคลื่อนไหว<textarea id="exam-movement"></textarea></label>
+                    <label class="full">ความผิดปกติที่พบ<textarea id="exam-abnormal"></textarea></label>
+                    <label class="full">ปัญหาที่ระบุ<textarea id="exam-problem" required></textarea></label>
+                    <button class="btn primary full">เพิ่มผลตรวจ</button>
+                  </form>
+                  <div class="wide-table space-top-md"><table><thead><tr><th>#</th><th>บริเวณ</th><th>ด้าน</th><th>สิ่งที่พบ</th><th>การเคลื่อนไหว</th><th>ปัญหา</th><th></th></tr></thead><tbody id="exam-list"></tbody></table></div>
+                </section>
+
+                <section class="card" id="pain-map-section">
+                  <div class="section-heading"><span class="section-number">3B</span><div><h2>Body Pain Map / Sen Code</h2><p>ตำแหน่งอาการก่อนรักษา หลังรักษา และติดตามผล</p></div></div>
+                  <div id="bodymap-slot"></div>
+                </section>
+              </section>
+
+              <section class="card clinical-stage" data-stage="diagnosis">
+                <div class="section-heading"><span class="section-number">4</span><div><h2>การวินิจฉัยแพทย์แผนไทย</h2><p>ใช้รากวิชาและ ontology แผนไทยเป็นหลัก ทุกข้อสรุปต้องย้อนกลับไปหา source ได้ และผู้ประกอบวิชาชีพเป็นผู้ยืนยัน</p></div></div>
+                <div class="notice foundation-clinical-bridge"><b>Clinical record ไม่ใช่ฐานความรู้</b><span>หน้านี้บันทึกข้อสรุปของ Encounter ส่วนคัมภีร์ โรค อาการ ธาตุ อวัยวะ ตำรับ สมุนไพร และหัตถการอยู่ที่ <a href="/foundation.html">รากวิชา</a></span></div>
+                <form id="diagnosis-form" class="form">
+                  <label>ธาตุสมุฏฐาน<select id="dx-dhatu"><option value="">เลือก</option><option>ปถวี</option><option>อาโป</option><option>วาโย</option><option>เตโช</option><option>หลายธาตุร่วม</option></select></label>
+                  <label>อุตุสมุฏฐาน<select id="dx-utu"><option value="">เลือก</option><option>เสมหะ</option><option>วาตะ</option><option>ปิตตะ</option><option>ช่วงเปลี่ยนฤดู</option></select></label>
+                  <label>อายุสมุฏฐาน<select id="dx-age"><option value="">เลือก</option><option>ปฐมวัย</option><option>มัชฌิมวัย</option><option>ปัจฉิมวัย</option></select></label>
+                  <label>กาลสมุฏฐาน<input id="dx-time" placeholder="เช้า กลางวัน เย็น กลางคืน / ช่วงกำเริบ"></label>
+                  <label>ประเทศสมุฏฐาน<input id="dx-place" placeholder="ถิ่นเกิด ที่อยู่ ภูมิอากาศ สภาพแวดล้อม"></label>
+                  <label>ธาตุเจ้าเรือน<input id="dx-birth" placeholder="ธาตุเจ้าเรือนเดิม"></label>
+                  <label>ธาตุปัจจุบัน<input id="dx-present" placeholder="ภาวะธาตุปัจจุบัน"></label>
+                  <label>ความมั่นใจ<select id="dx-confidence"><option value="">ไม่ระบุ</option><option value="low">ต่ำ</option><option value="moderate">ปานกลาง</option><option value="high">สูง</option></select></label>
+                  <div class="full checkgrid">
+                    <label><input type="checkbox" name="cause" value="อาหาร">อาหาร</label><label><input type="checkbox" name="cause" value="อิริยาบถ">อิริยาบถ</label>
+                    <label><input type="checkbox" name="cause" value="อากาศ">อากาศ/ฤดูกาล</label><label><input type="checkbox" name="cause" value="พฤติกรรม">พฤติกรรม</label>
+                    <label><input type="checkbox" name="cause" value="อารมณ์">อารมณ์</label><label><input type="checkbox" name="cause" value="อื่นๆ">อื่น ๆ</label>
+                  </div>
+                  <div id="ttm-assistant-slot" class="full"></div>
+                  <label class="full">กลไกการเกิดอาการตามศาสตร์แผนไทย<textarea id="dx-mechanism"></textarea></label>
+                  <label class="full">สรุปการวิเคราะห์<textarea id="dx-summary" required></textarea></label>
+                  <label class="full">การวินิจฉัยโรคแผนไทย<textarea id="dx-thai" required></textarea></label>
+                  <label class="full">วินิจฉัยแยกโรค<textarea id="dx-differential"></textarea></label>
+                  <button class="btn primary full">บันทึก Diagnosis และสมุฏฐาน</button>
+                </form>
+                <div id="diagnosis-status" class="status space-top-sm">ยังไม่มีข้อมูล</div>
+              </section>
+
+              <section class="clinical-stage" data-stage="treatment">
+                <section class="card">
+                  <div class="section-heading"><span class="section-number">5A</span><div><h2>Treatment Plan</h2><p>เป้าหมาย แผนการรักษา ข้อควรระวัง และ home program</p></div></div>
+                  <form id="plan-form" class="form">
+                    <label class="full">เป้าหมายที่ 1<input id="plan-goal1" required></label><label class="full">เป้าหมายที่ 2<input id="plan-goal2"></label><label class="full">เป้าหมายที่ 3<input id="plan-goal3"></label>
+                    <label>ความถี่/สัปดาห์<input id="plan-frequency" type="number" min="0" step="0.5"></label><label>ระยะเวลา (สัปดาห์)<input id="plan-weeks" type="number" min="0" step="0.5"></label><label>จำนวนครั้ง<input id="plan-sessions" type="number" min="0"></label>
+                    <label class="full">รูปแบบการรักษา (คั่นด้วย comma)<input id="plan-modalities" placeholder="นวดไทย, ประคบสมุนไพร, อบสมุนไพร"></label>
+                    <label class="full">บริเวณเป้าหมาย (คั่นด้วย comma)<input id="plan-areas"></label>
+                    <label class="full">ข้อควรระวัง<textarea id="plan-precautions"></textarea></label>
+                    <label class="full">แผนยา/สมุนไพร<textarea id="plan-herbal"></textarea></label>
+                    <label class="full">คำแนะนำทำที่บ้าน<textarea id="plan-home"></textarea></label>
+                    <button class="btn primary full">บันทึก Treatment Plan</button>
+                  </form>
+                  <div id="plan-status" class="status space-top-sm">ยังไม่มีแผนการรักษา</div>
+                </section>
+
+                <section class="card" id="opd-session-section">
+                  <div class="section-heading"><span class="section-number">5B</span><div><h2>Treatment Session & Outcome</h2><p>บันทึกการรักษาที่เกิดขึ้นจริงและเปรียบเทียบผลก่อน–หลัง</p></div></div>
+                  <form id="opd-session-form" class="opd-grid">
+                    <div class="full opd-chipgrid"><label><input type="checkbox" name="opd-modality" value="นวดไทย">นวดไทย</label><label><input type="checkbox" name="opd-modality" value="ประคบสมุนไพร">ประคบสมุนไพร</label><label><input type="checkbox" name="opd-modality" value="อบสมุนไพร">อบสมุนไพร</label><label><input type="checkbox" name="opd-modality" value="ยาสมุนไพร">ยาสมุนไพร</label><label><input type="checkbox" name="opd-modality" value="หัตถการอื่น">หัตถการอื่น</label></div>
+                    <label>ความปวดก่อนรักษา 0–10<input id="opd-pain-before" type="number" min="0" max="10"></label>
+                    <label>ความปวดหลังรักษา 0–10<input id="opd-pain-after" type="number" min="0" max="10"></label>
+                    <label class="full">วิธีการรักษา / รายละเอียด<textarea id="opd-treatment-detail" required></textarea></label>
+                    <label class="full"><input id="opd-procedure-referral" type="checkbox"> ส่งหัตถการ / ส่งต่อ Procedure</label>
+                    <label class="full">รายละเอียดการส่งหัตถการ<input id="opd-procedure-detail"></label>
+                    <label class="full">ข้อควรระวัง<textarea id="opd-precautions"></textarea></label>
+                    <label class="full">สรุปผลหลังรักษา<textarea id="opd-outcome"></textarea></label>
+                    <label class="full">คำแนะนำ<textarea id="opd-advice"></textarea></label>
+                    <button class="btn primary full" type="submit">บันทึก Treatment Session</button>
+                  </form>
+                  <div id="opd-session-list"></div>
+                </section>
+              </section>
+
+              <section class="clinical-stage" data-stage="prescription">
+                <section class="card">
+                  <div class="section-heading"><span class="section-number">6A</span><div><h2>เพิ่มรายการยา</h2><p>จัดรายการให้ครบก่อนส่งใบสั่งยาไปห้องยา</p></div></div>
+                  <form id="prescription-item-form" class="form">
+                    <label class="full">ยา/ผลิตภัณฑ์<select id="rx-product" required></select></label>
+                    <label>จำนวน<input id="rx-qty" type="number" step=".01" min=".01" required></label>
+                    <label>หน่วยจ่าย<input id="rx-unit" required readonly></label>
+                    <label>ขนาด/วิธีใช้<input id="rx-dose"></label>
+                    <label>ความถี่<input id="rx-frequency"></label>
+                    <label>ระยะเวลา<input id="rx-duration"></label>
+                    <label>Route<input id="rx-route" value="oral"></label>
+                    <label class="full">คำแนะนำ/ข้อควรระวัง<textarea id="rx-instructions"></textarea></label>
+                    <button class="btn ghost full">เพิ่มลงใบสั่งยา</button>
+                  </form>
+                </section>
+                <section class="card">
+                  <div class="section-heading"><span class="section-number">6B</span><div><h2>ตรวจและส่งใบสั่งยา</h2><p>ใบสั่งยาจะเข้าสู่ Pharmacy Queue เมื่อยืนยันส่ง</p></div></div>
+                  <div id="rx-cart" class="list"><p class="muted">ยังไม่มีรายการยา</p></div>
+                  <form id="prescription-form" class="form space-top-md">
+                    <label class="full">Encounter<select id="rx-encounter" required></select></label>
+                    <label class="full">Clinical notes<textarea id="rx-clinical-notes"></textarea></label>
+                    <button class="btn primary full">ส่งใบสั่งยาไป Pharmacy</button>
+                  </form>
+                </section>
+              </section>
+            </div>
+
+            <section class="card clinical-stage" id="clinical-signoff-panel" data-stage="signoff">
+              <div class="section-heading"><span class="section-number">7</span><div><h2>Clinical Sign-off / Record Lock</h2><p>ทบทวน Diagnosis และ Treatment ให้ครบก่อนลงนาม หลังลงนามต้องใช้ Amendment จึงจะแก้ไขได้</p></div></div>
+              <div id="signoff-status" class="status">เลือก Encounter เพื่อดูสถานะ</div>
+              <form id="signoff-form" class="form space-top-sm">
+                <label>ชื่อผู้ลงนาม<input id="signer-name"></label>
+                <label>เลขใบประกอบวิชาชีพ<input id="license-no" placeholder="ถ้ามี"></label>
+                <label class="full">เหตุผล/หมายเหตุ<input id="signoff-reason" value="Complete clinical record sign-off"></label>
+                <button class="btn primary full" id="signoff-btn">ลงนามและ Lock เวชระเบียน</button>
+              </form>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</body>
+</html>

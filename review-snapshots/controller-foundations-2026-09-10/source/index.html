@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Clinical OS — Operations</title>
+  <link rel="stylesheet" href="app.css?v=account-access1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-ia1"></script>
+  <script src="chananya-runtime.js?v=account-access1"></script>
+  <script src="app-shell.js?v=clinical-os-ia1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-department1"></script>
+  <script defer src="app.js?v=account-access1"></script>
+</head>
+<body data-page="operations">
+  <div id="boot">
+    <div><div class="spinner"></div><h2>กำลังเปิด <span data-brand-app-name>CNYOS</span></h2><p id="boot-error">กำลังตรวจสอบ session และสิทธิ์</p></div>
+  </div>
+
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/">
+        <span class="brand-mark">ช</span>
+        <span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span>
+      </a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Clinical operations core<br>Thai Traditional Medicine first</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+
+    <div class="workspace">
+      <header class="top">
+        <div class="actions">
+          <button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button>
+          <div class="top-title"><span class="page-kicker">Operations</span><h1>ศูนย์ปฏิบัติการคลินิก</h1></div>
+        </div>
+        <div class="actions">
+          <div class="identity-block"><small id="identity"></small></div>
+          <span class="badge" id="role">viewer</span>
+          <button class="btn ghost" id="logout">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <nav class="module-nav" id="main-nav" aria-label="เมนูศูนย์ปฏิบัติการ">
+        <button class="active" data-view="dashboard">ภาพรวม</button>
+        <button data-view="patients" data-perm="patients">ทะเบียนผู้รับบริการ</button>
+        <button data-view="billing" data-perm="billing">การเงิน</button>
+        <button data-view="audit" data-perm="audit">Audit log</button>
+      </nav>
+
+      <main>
+        <section class="view active" id="dashboard">
+          <div class="hero">
+            <h2 id="workspace-title">งานวันนี้อยู่ที่เดียว</h2>
+            <p>เริ่มจากผู้รับบริการ แล้วส่งงานไปยังนัดหมาย เวชระเบียน ห้องยา การผลิต และการเงินตามขอบเขตหน้าที่ที่ชัดเจน</p>
+          </div>
+          <div class="stats">
+            <div class="stat">ผู้รับบริการ<strong id="stat-p">0</strong></div>
+            <div class="stat">นัดวันนี้<strong id="stat-a">0</strong></div>
+            <div class="stat">Encounter เปิดอยู่<strong id="stat-d">0</strong></div>
+            <div class="stat">คิวห้องยา<strong id="stat-rx">0</strong></div>
+            <div class="stat">รอการเงิน<strong id="stat-b">0</strong></div>
+          </div>
+          <div class="grid2">
+            <section class="card">
+              <h3>ไปยังงานของคุณ</h3>
+              <div id="quick-actions" class="list"></div>
+            </section>
+            <section class="card">
+              <h3>งานที่รอดำเนินการ</h3>
+              <div id="work-list" class="list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="patients">
+          <div class="grid2">
+            <section class="card">
+              <div class="section-heading"><span class="section-number">HN</span><div><h2>ลงทะเบียนผู้รับบริการ</h2><p>ข้อมูลประชากรและการแพ้เป็นข้อมูลกลาง HN จะออกจากฐานข้อมูลอัตโนมัติเมื่อ Hybrid Identity เปิดใช้งาน</p></div></div>
+              <form class="form" id="patient-form">
+                <label>HN<input id="p-hn" placeholder="ระบบออกให้อัตโนมัติ"><small id="p-hn-note">กำลังตรวจสอบ Identity service</small></label>
+                <label>คำนำหน้า<input id="p-prefix"></label>
+                <label>ชื่อ<input id="p-first" required></label>
+                <label>นามสกุล<input id="p-last" required></label>
+                <label>เลขบัตรประชาชน<input id="p-national"></label>
+                <label>เพศ<select id="p-gender"><option value="">ไม่ระบุ</option><option>ชาย</option><option>หญิง</option><option>อื่นๆ</option></select></label>
+                <label>วันเกิด<input id="p-dob" type="date"></label>
+                <label>โทรศัพท์<input id="p-phone"></label>
+                <label class="full">ที่อยู่<textarea id="p-address"></textarea></label>
+                <label>สิทธิการรักษา<input id="p-right"></label>
+                <label>ผู้ติดต่อฉุกเฉิน<input id="p-emergency"></label>
+                <label class="full">เพิ่มรายการแพ้/ปฏิกิริยา<textarea id="p-allergy" placeholder="การแก้ไขข้อมูลผู้รับบริการจะไม่ลบประวัติการแพ้เดิม"></textarea></label>
+                <button class="btn primary full" id="patient-submit">บันทึกผู้รับบริการ</button>
+                <button class="btn ghost full hidden" id="patient-cancel" type="button">ยกเลิกการแก้ไข</button>
+              </form>
+            </section>
+            <section class="card">
+              <div class="section-heading"><span class="section-number">01</span><div><h2>ทะเบียนผู้รับบริการ</h2><p>ค้นด้วย HN ชื่อ โทรศัพท์ หรือข้อมูลการแพ้</p></div></div>
+              <a class="btn primary wide space-bottom-md" href="/check-in.html">สแกน QR / เปิด Encounter ด้วย HN</a>
+              <label>ค้นหา<input id="patient-search" type="search" placeholder="HN / ชื่อ / โทรศัพท์ / การแพ้"></label>
+              <div id="patient-list" class="list space-top-sm"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="billing">
+          <div class="grid2">
+            <section class="card">
+              <div class="section-heading"><span class="section-number">฿</span><div><h2>รายการรอออก Invoice</h2><p>สร้างจากรายการที่ห้องยาจ่ายจริงแล้วเท่านั้น</p></div></div>
+              <div id="billing-queue" class="list"></div>
+            </section>
+            <section class="card">
+              <div class="section-heading"><span class="section-number">02</span><div><h2>รับชำระ</h2><p>บันทึกการรับชำระแบบ manual พร้อมเลขอ้างอิง</p></div></div>
+              <form class="form" id="payment-form">
+                <label class="full">Invoice<select id="pay-invoice" required></select></label>
+                <label>ช่องทาง<select id="pay-channel"><option value="cash">เงินสด</option><option value="qr">QR ตรวจสอบด้วยผู้ใช้</option><option value="bank_transfer">โอนธนาคาร</option><option value="card">บัตร</option></select></label>
+                <label>จำนวนเงิน<input id="pay-amount" type="number" step=".01" min=".01" required></label>
+                <label class="full">เลขอ้างอิง/หมายเหตุ<input id="pay-note"></label>
+                <button class="btn primary full">ยืนยันรับชำระ</button>
+              </form>
+              <hr>
+              <h3>Invoice / Payment</h3>
+              <div id="invoice-list" class="list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="audit">
+          <section class="card">
+            <div class="section-heading"><span class="section-number">A</span><div><h2>Audit log</h2><p>กิจกรรมล่าสุดที่บัญชีนี้มีสิทธิ์ตรวจสอบ</p></div></div>
+            <div id="audit-list" class="list"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="lock" id="lock"><div><h2>ระบบถูกล็อก</h2><p>ไม่มีการใช้งานเกิน 15 นาที</p><button class="btn ghost" id="unlock">ปลดล็อก</button></div></div>
+  <dialog class="identity-dialog" id="identity-link-dialog" aria-labelledby="identity-link-title">
+    <form method="dialog" class="identity-dialog-head"><h2 id="identity-link-title">เชื่อมผู้รับบริการกับ LINE</h2><button class="btn ghost" value="cancel" aria-label="ปิด">ปิด</button></form>
+    <p class="muted" id="identity-link-patient">—</p>
+    <form class="form" id="identity-link-form">
+      <label>ประเภทการเชื่อม
+        <select id="identity-link-type"><option value="self">บัญชีของผู้รับบริการ</option><option value="guardian">บัญชีผู้ดูแล</option></select>
+      </label>
+      <label>ความสัมพันธ์<input id="identity-link-relation" type="text" placeholder="เช่น มารดา บุตร ผู้ดูแล" disabled></label>
+      <label class="full check-row"><input id="identity-link-consent" type="checkbox" required> ผู้รับบริการหรือผู้แทนให้ความยินยอมให้ออกรหัสเชื่อมบัญชี LINE และฉันได้อธิบายวิธียกเลิกการเชื่อมแล้ว</label>
+      <button class="btn primary full" type="submit">ออกรหัสเชื่อมบัญชี 15 นาที</button>
+    </form>
+    <section class="identity-link-management">
+      <div class="section-heading"><span class="section-number">↺</span><div><h3>บัญชีที่เคยเชื่อม</h3><p>แสดงเฉพาะประเภทและเวลา ไม่แสดง LINE user ID</p></div></div>
+      <div class="list" id="identity-existing-links"><p class="muted">กำลังตรวจสอบ…</p></div>
+      <form class="form hidden" id="identity-revoke-form">
+        <input id="identity-revoke-id" type="hidden">
+        <p class="full muted" id="identity-revoke-summary">—</p>
+        <label class="full">เหตุผลการยกเลิกการเชื่อม<textarea id="identity-revoke-reason" minlength="5" maxlength="500" required placeholder="เช่น ผู้รับบริการเปลี่ยนบัญชี LINE หรือถอนความยินยอม"></textarea></label>
+        <button class="btn danger full" type="submit">ยืนยันยกเลิกการเชื่อม</button>
+        <button class="btn ghost full" id="identity-revoke-cancel" type="button">ไม่ยกเลิก</button>
+      </form>
+    </section>
+    <section class="identity-link-code hidden" id="identity-link-result" aria-live="polite">
+      <small>ให้ผู้รับบริการกรอกใน LINE Patient Card</small>
+      <strong id="identity-link-code">—— ————</strong>
+      <span id="identity-link-expiry">—</span>
+      <div class="actions"><button class="btn ghost" id="identity-copy-code" type="button">คัดลอกรหัส</button><a class="btn ghost" href="/patient-card.html" target="_blank" rel="noopener">เปิด Patient Card</a></div>
+    </section>
+  </dialog>
+  <div class="toast" id="toast"></div>
+</body>
+</html>
