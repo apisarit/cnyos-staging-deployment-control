@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Quality Release Workstation</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-quality1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-quality1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-quality1"></script>
+  <script src="app-shell.js?v=clinical-os-quality1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-quality1"></script>
+  <script defer src="quality.js?v=clinical-os-quality1"></script>
+</head>
+<body data-page="quality">
+  <div id="boot"><div><div class="spinner"></div><h2>กำลังเปิด Quality Workstation</h2><p id="boot-error">กำลังตรวจสอบ tenant, role และ Quality migration</p></div></div>
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical &amp; Wellness OS</small></span></a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Independent Quality release<br>Producer ≠ Quality approver</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+    <div class="workspace">
+      <header class="top">
+        <div class="actions"><button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button><div class="top-title"><span class="page-kicker">Quality</span><h1>ตรวจรับรองและปล่อยผ่านผลิตภัณฑ์</h1></div></div>
+        <div class="actions"><div class="identity-block"><small id="identity"></small></div><span class="badge" id="role">viewer</span><button class="btn ghost" id="logout">ออกจากระบบ</button></div>
+      </header>
+      <main>
+        <section class="hero"><h2>Production complete → Independent QC → Finished Goods</h2><p>Quality เห็นเฉพาะ Batch, Formula, ผลผลิต และหลักฐานที่จำเป็นต่อการอนุมัติ ไม่เห็น HN ผู้รับบริการ ใบสั่งยา หรือข้อมูลการรักษา</p></section>
+        <div class="stats">
+          <div class="stat">รอตรวจ<strong id="stat-awaiting">0</strong></div>
+          <div class="stat">ผ่านวันนี้<strong id="stat-passed">0</strong></div>
+          <div class="stat">ไม่ผ่านวันนี้<strong id="stat-rejected">0</strong></div>
+          <div class="stat">หลักฐานไม่ครบ<strong id="stat-blocked">0</strong></div>
+          <div class="stat">Separation<strong id="stat-separation">ON</strong></div>
+        </div>
+        <section class="card">
+          <div class="section-heading"><span class="section-number">QC</span><div><h2>Batch รอ Quality decision</h2><p>ผู้ผลิต Batch เดียวกันไม่สามารถกดยืนยันผ่านหรือ Reject ด้วยบัญชีเดิมได้</p></div></div>
+          <div id="quality-queue" class="list"></div>
+        </section>
+        <section class="card">
+          <div class="section-heading"><span class="section-number">LOG</span><div><h2>Quality history</h2><p>ผลตรวจ ผู้ตรวจ ผู้อนุมัติ และเหตุผลเชื่อมกับ Audit trail</p></div></div>
+          <div id="quality-history" class="list"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="workflow-dialog" id="release-dialog">
+    <form class="form" id="release-form">
+      <div class="workflow-dialog-head full"><div><span class="page-kicker">Independent Quality</span><h2>QC Pass &amp; Release</h2></div><button class="btn ghost" type="button" data-close-dialog aria-label="ปิด">ปิด</button></div>
+      <p class="notice warning full" id="release-order-label"></p>
+      <p class="notice full">การยืนยันจะสร้าง Finished Goods Lot รับ Stock และเปิดคิว Pharmacy ใน PostgreSQL transaction เดียว</p>
+      <label class="full">Result summary<textarea id="qc-summary" required minlength="3" placeholder="ผลการตรวจเทียบกับข้อกำหนด"></textarea></label>
+      <label>Sample reference<input id="qc-sample"></label>
+      <label>Appearance result<input id="qc-appearance"></label>
+      <label>Moisture result<input id="qc-moisture" type="number" min="0" step="0.0001"></label>
+      <label>Water activity<input id="qc-water-activity" type="number" min="0" step="0.0001"></label>
+      <label>Weight result<input id="qc-weight" type="number" min="0" step="0.0001"></label>
+      <div class="right full"><button class="btn ghost" type="button" data-close-dialog>ยกเลิก</button><button class="btn primary">ยืนยัน Quality Release</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="workflow-dialog" id="reject-dialog">
+    <form class="form" id="reject-form">
+      <div class="workflow-dialog-head full"><div><span class="page-kicker">Independent Quality</span><h2>QC Reject</h2></div><button class="btn ghost" type="button" data-close-dialog aria-label="ปิด">ปิด</button></div>
+      <p class="notice warning full" id="reject-order-label"></p>
+      <label class="full">Result summary<textarea id="reject-summary" required minlength="3">ไม่ผ่านข้อกำหนด</textarea></label>
+      <label class="full">เหตุผลที่ไม่ผ่าน<textarea id="reject-reason" required minlength="5"></textarea></label>
+      <div class="right full"><button class="btn ghost" type="button" data-close-dialog>ยกเลิก</button><button class="btn danger">ยืนยัน Reject และ Audit</button></div>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

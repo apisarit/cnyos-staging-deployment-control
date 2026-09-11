@@ -1,0 +1,35 @@
+name: Controller offline CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      CNYOS_OFFLINE_CI: true
+    steps:
+      - name: Checkout inert source package
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify source provenance
+        run: env -i PATH="$PATH" CI=true CNYOS_OFFLINE_CI=true "$(command -v node)" tooling/verify-source.mjs
+      - name: Run source verifier adversarial contract
+        run: env -i PATH="$PATH" CI=true CNYOS_OFFLINE_CI=true "$(command -v node)" tooling/verify-source-contract.mjs
+      - name: Run all controller contracts (inert; no activation)
+        working-directory: ops/cnyos-staging-controller
+        run: |
+          node_path="$(command -v node)"
+          env -i PATH="$PATH" CI=true CNYOS_OFFLINE_CI=true "$node_path" tests/controller-contract.mjs
+          env -i PATH="$PATH" CI=true CNYOS_OFFLINE_CI=true "$node_path" scripts/run-activation-contracts.mjs

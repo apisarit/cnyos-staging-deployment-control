@@ -1,0 +1,17 @@
+{
+  "name": "cnyos-staging-protected-controller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node tests/controller-contract.mjs && node tests/evidence-publication-contract.mjs && node tests/uat-evidence-schema-contract.mjs && node tests/live-github-release-boundary-contract.mjs && node tests/authorization-foundation-security-contract.mjs && node tests/rollback-principal-boundary-contract.mjs && node tests/rollback-authorization-chain-contract.mjs && node tests/controller-static-reproducibility-contract.mjs && node tests/controller-function-bundle-contract.mjs && node tests/function-recipe-input-contract.mjs && node tests/function-comparison-handoff-contract.mjs && node tests/controller-authenticated-uat-contract.mjs && node tests/controller-uat-evidence-publication-contract.mjs && node tests/controller-uat-access-observations-contract.mjs && node tests/controller-uat-browser-read-policy-contract.mjs && node tests/controller-uat-browser-transport-contract.mjs && node tests/controller-uat-browser-matrix-contract.mjs && node tests/rollback-attestation-deposit-contract.mjs && node tests/release-state-reconciliation-contract.mjs && node tests/netlify-control-file-behavior-contract.mjs && node tests/private-draft-access-boundary-contract.mjs && node tests/scheduled-function-route-denial-contract.mjs && node tests/live-netlify-authority-boundary-contract.mjs && node tests/backup-disable-runtime-boundary-contract.mjs && node tests/runtime-capability-boundary-contract.mjs && node tests/draft-mutation-recovery-contract.mjs && node tests/private-draft-lifecycle-contract.mjs && node tests/netlify-exclusive-publisher-contract.mjs && node tests/rollback-readiness-contract.mjs && node tests/external-broker-trust-boundaries-contract.mjs",
+    "test:activation": "node scripts/run-activation-contracts.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "10.7.13",
+    "qrcode": "1.5.4"
+  }
+}

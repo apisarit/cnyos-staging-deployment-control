@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Clinical Outcomes</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-outcomes1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-outcomes1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=clinical-os-outcomes1"></script>
+  <script defer src="outcomes.js?v=clinical-os-outcomes1"></script>
+</head>
+<body data-page="outcomes">
+  <div id="boot"><div><div class="spinner"></div><h2>กำลังเปิดผลลัพธ์ทางคลินิก</h2><p id="boot-error">กำลังตรวจสอบ tenant, session และสิทธิ์ผู้รักษา</p></div></div>
+
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span></a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Measurable clinical outcomes<br>Tenant-bound • Read-only</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+
+    <div class="workspace">
+      <header class="top">
+        <div class="actions">
+          <button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button>
+          <div class="top-title"><span class="page-kicker">Clinical Outcomes</span><h1>ผลลัพธ์และการติดตาม</h1></div>
+        </div>
+        <div class="actions">
+          <div class="identity-block"><small id="identity"></small></div>
+          <span class="badge" id="role">viewer</span>
+          <button class="btn ghost" id="logout">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero outcomes-hero">
+          <span class="page-kicker">MEASURE • REVIEW • IMPROVE</span>
+          <h2>ผลลัพธ์เดิมกลับมาเป็นข้อมูลที่ค้นหาและตรวจสอบได้</h2>
+          <p>วัด Pain ก่อน–หลัง ติดตามการเปลี่ยนแปลง ค้นด้วย HN ผู้รับบริการ Encounter ผู้รักษา การวินิจฉัย วิธีรักษา และ Outcome โดยอ่านผ่าน tenant-bound RPC เท่านั้น</p>
+        </section>
+
+        <form class="card outcomes-filter" id="outcomes-filter">
+          <div class="section-heading"><span class="section-number">F</span><div><h2>ช่วงเวลาและคำค้น</h2><p>จำกัดช่วงสูงสุด 5 ปีและคืนผลครั้งละไม่เกิน 200 รายการ</p></div></div>
+          <div class="toolbar">
+            <label>ตั้งแต่วันที่<input id="outcomes-from" type="date" required></label>
+            <label>ถึงวันที่<input id="outcomes-to" type="date" required></label>
+            <label>ค้นหา<input id="outcomes-query" type="search" maxlength="120" placeholder="HN / ชื่อ / Encounter / Diagnosis / Outcome"></label>
+            <button class="btn primary" type="submit">ค้นผลลัพธ์</button>
+            <button class="btn ghost" id="outcomes-reset" type="button">90 วันล่าสุด</button>
+          </div>
+        </form>
+
+        <div class="stats outcomes-stats" aria-live="polite">
+          <div class="stat">Treatment sessions<strong id="outcomes-total">0</strong></div>
+          <div class="stat">มีคะแนนก่อน–หลัง<strong id="outcomes-measured">0</strong></div>
+          <div class="stat">Pain เฉลี่ยก่อน<strong id="outcomes-before">0</strong></div>
+          <div class="stat">Pain เฉลี่ยหลัง<strong id="outcomes-after">0</strong></div>
+          <div class="stat">ดีขึ้น<strong id="outcomes-rate">0%</strong></div>
+          <div class="stat">มี Follow-up<strong id="outcomes-followup">0</strong></div>
+        </div>
+
+        <section class="card">
+          <div class="section-heading"><span class="section-number">O</span><div><h2>Clinical outcome timeline</h2><p id="outcomes-meta">กำลังโหลดข้อมูล</p></div></div>
+          <div class="outcomes-list" id="outcomes-list"></div>
+        </section>
+
+        <p class="notice warning"><b>ขอบเขต:</b> หน้านี้เป็นรายงานอ่านอย่างเดียวสำหรับ Practitioner/Doctor และ Super Admin ภายใน tenant เดียว ไม่ใช้แทนการวินิจฉัย และไม่เปิดให้ Reception, Pharmacy, Production, Quality, Billing หรือ Governance Admin</p>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</body>
+</html>
