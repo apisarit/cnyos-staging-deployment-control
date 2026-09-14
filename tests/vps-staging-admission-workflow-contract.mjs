@@ -35,6 +35,8 @@ for (const input of [
 assert.match(workflow, /\^\[0-9a-f\]\{40\}\$/);
 assert.match(workflow, /\^\[0-9a-f\]\{64\}\$/);
 assert.match(workflow, /audience=cnyos-vps-staging-broker/);
+assert.doesNotMatch(workflow, /raise SystemExit\([^\n]+\) if/,
+  'a conditional raise expression also raises the successful print result');
 assert.match(workflow, /https:\/\/127\.0\.0\.1:9443\/v1\/staging\/releases/);
 assert.match(workflow, /--cacert \/etc\/cnyos-broker\/ca\.pem/);
 assert.match(workflow, /Authorization: Bearer \$\{oidc_token\}/);

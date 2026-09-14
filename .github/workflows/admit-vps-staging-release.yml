@@ -114,7 +114,7 @@ jobs:
               echo "GitHub OIDC token request failed" >&2
               exit 1
             }
-          oidc_token="$(printf '%s' "$oidc_response" | python3 -c 'import json,sys; value=json.load(sys.stdin).get("value"); raise SystemExit("OIDC response did not contain a token") if not isinstance(value,str) or not value else print(value)')" || {
+          oidc_token="$(printf '%s' "$oidc_response" | python3 -c 'import json,sys; value=json.load(sys.stdin).get("value"); sys.exit("OIDC response did not contain a token") if not isinstance(value,str) or not value else None; print(value)')" || {
             echo "GitHub OIDC response was invalid" >&2
             exit 1
           }
