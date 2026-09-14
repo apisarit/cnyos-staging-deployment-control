@@ -14,7 +14,7 @@ const baseBody = (suffix = 'a'.repeat(40)) => ({
   request_id: `9001.1.${suffix}`,
   environment: 'staging',
   controller: { repository: 'apisarit/cnyos-staging-deployment-control', repository_id: 1362863285, ref: 'refs/heads/main', ref_protected: true, workflow: 'Admit VPS staging release', workflow_ref: 'apisarit/cnyos-staging-deployment-control/.github/workflows/admit-vps-staging-release.yml@refs/heads/main', workflow_sha: '9'.repeat(40), run_id: 9001, run_attempt: 1, actor: 'apisarit', actor_id: 216305243, triggering_actor: 'apisarit' },
-  producer: { repository: 'apisarit/chananya-clinical-wellness-os', ref: 'refs/heads/main', workflow_file: 'deploy-vps-staging.yml' },
+  producer: { repository: 'apisarit/chananya-clinical-wellness-os', ref: 'refs/heads/codex/vps-staging-candidate-20260915', workflow_file: 'deploy-vps-staging.yml' },
   candidate: { source_commit: 'b'.repeat(40), artifact_id: 7001, producer_run_id: 8001, archive_sha256: 'c'.repeat(64), release_request_sha256: 'd'.repeat(64) },
 });
 function tokenFor(body, changes = {}) {

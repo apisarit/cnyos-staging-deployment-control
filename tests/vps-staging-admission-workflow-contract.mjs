@@ -57,6 +57,8 @@ assert.match(workflow, /github\.triggering_actor/);
 assert.match(workflow, /CONTROLLER_ACTOR" == "apisarit" && "\$CONTROLLER_ACTOR_ID" == "216305243"/);
 assert.match(workflow, /apisarit\/chananya-clinical-wellness-os/);
 assert.match(workflow, /"workflow_file": "deploy-vps-staging\.yml"/);
+assert.match(workflow, /"ref": "refs\/heads\/codex\/vps-staging-candidate-20260915"/);
+assert.doesNotMatch(workflow, /"producer"[\s\S]{0,300}"ref": "refs\/heads\/main"/);
 assert.match(workflow, /producer_run_id/);
 assert.match(workflow, /archive_sha256/);
 assert.match(workflow, /release_request_sha256/);

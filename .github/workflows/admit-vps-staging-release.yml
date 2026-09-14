@@ -165,7 +165,7 @@ jobs:
               },
               "producer": {
                   "repository": "apisarit/chananya-clinical-wellness-os",
-                  "ref": "refs/heads/main",
+                  "ref": "refs/heads/codex/vps-staging-candidate-20260915",
                   "workflow_file": "deploy-vps-staging.yml",
               },
               "candidate": {
