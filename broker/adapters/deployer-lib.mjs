@@ -80,7 +80,7 @@ function validateManifest(files, request, commit) {
       deploy.safety?.stagingDatabaseExplicitlyAcknowledged !== true) {
     throw new AdapterError('DEPLOY_MANIFEST_BINDING_INVALID');
   }
-  if (!runtime.files.every(name => typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(name))) {
+  if (!runtime.files.every(name => typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._-]{0,199}$/.test(name))) {
     throw new AdapterError('RUNTIME_FILESET_INVALID');
   }
   const expected = new Set([...runtime.files, 'runtime-publish-manifest.json']);
