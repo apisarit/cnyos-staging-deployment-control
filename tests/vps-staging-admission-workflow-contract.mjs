@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = path.join(root, '.github', 'workflows', 'admit-vps-staging-release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const service = fs.readFileSync(path.join(root, 'systemd', 'cnyos-staging-broker.service'), 'utf8');
 const executableLines = workflow
   .split('\n')
   .map(line => line.replace(/\s+#.*$/, ''))
@@ -71,5 +72,8 @@ assert.doesNotMatch(executableLines, /(?:--insecure|\s-k(?:\s|$))/,
 assert.doesNotMatch(executableLines, /echo\s+.*(?:oidc_response|oidc_token|ACTIONS_ID_TOKEN_REQUEST_TOKEN)/i,
   'OIDC material must never be printed');
 assert.match(workflow, /only component allowed to download, verify, and invoke the VPS deployer/);
+assert.match(service, /CNYOS_BROKER_CANDIDATE_VERIFIER=\/opt\/cnyos-staging-controller\/broker\/adapters\/candidate-verifier\.mjs/);
+assert.match(service, /CNYOS_BROKER_ARTIFACT_FETCHER=\/opt\/cnyos-staging-controller\/broker\/adapters\/artifact-fetcher\.mjs/);
+assert.match(service, /CNYOS_BROKER_DEPLOYER=\/opt\/cnyos-staging-controller\/broker\/adapters\/deployer\.mjs/);
 
 process.stdout.write('CNYOS VPS staging admission workflow contract: passed\n');

@@ -29,9 +29,9 @@ The systemd template uses these paths:
 /etc/cnyos-broker/controller-workflow-sha
                                       root:root, mode 0600; exact reviewed 40-character commit SHA
 /var/lib/cnyos-broker                  root:root, mode 0700
-/usr/local/libexec/cnyos-staging-candidate-verifier
-/usr/local/libexec/cnyos-staging-artifact-fetcher
-/usr/local/libexec/cnyos-staging-deployer
+/opt/cnyos-staging-controller/broker/adapters/candidate-verifier.mjs
+/opt/cnyos-staging-controller/broker/adapters/artifact-fetcher.mjs
+/opt/cnyos-staging-controller/broker/adapters/deployer.mjs
 ```
 
 The unit deliberately pins the Node.js runtime already installed on the CNYOS
@@ -89,9 +89,12 @@ adapters.
 Example installation (performed separately on the VPS, after review):
 
 ```text
-install -o root -g root -m 0755 broker/adapters/candidate-verifier.mjs /usr/local/libexec/cnyos-staging-candidate-verifier
-install -o root -g root -m 0755 broker/adapters/artifact-fetcher.mjs /usr/local/libexec/cnyos-staging-artifact-fetcher
-install -o root -g root -m 0755 broker/adapters/deployer.mjs /usr/local/libexec/cnyos-staging-deployer
+install -d -o root -g root -m 0755 /opt/cnyos-staging-controller/broker/adapters
+install -o root -g root -m 0755 broker/adapters/candidate-verifier.mjs /opt/cnyos-staging-controller/broker/adapters/candidate-verifier.mjs
+install -o root -g root -m 0755 broker/adapters/artifact-fetcher.mjs /opt/cnyos-staging-controller/broker/adapters/artifact-fetcher.mjs
+install -o root -g root -m 0755 broker/adapters/deployer.mjs /opt/cnyos-staging-controller/broker/adapters/deployer.mjs
+install -o root -g root -m 0644 broker/adapters/common.mjs /opt/cnyos-staging-controller/broker/adapters/common.mjs
+install -o root -g root -m 0644 broker/adapters/deployer-lib.mjs /opt/cnyos-staging-controller/broker/adapters/deployer-lib.mjs
 install -d -o root -g root -m 0700 /var/lib/cnyos-broker/spool
 ```
 
