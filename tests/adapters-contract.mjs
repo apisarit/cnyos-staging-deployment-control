@@ -184,6 +184,7 @@ await assert.rejects(() => deployStaging(receiptFailureBody, {
 }), /simulated durable receipt failure/);
 assert.equal(await fs.lstat(path.join(receiptFailureRoot, 'current')).catch(() => null), null);
 assert.equal(JSON.parse(await fs.readFile(path.join(receiptFailureRoot, 'state', 'receipts', `${receiptFailureBody.request_id}.json`), 'utf8')).rollback_succeeded, true);
+assert.equal(JSON.parse(await fs.readFile(path.join(receiptFailureRoot, 'state', 'receipts', `${receiptFailureBody.request_id}.json`), 'utf8')).failure_code, 'DEPLOYER_FAILED');
 assert.equal(await fs.lstat(receiptFailureSpool).catch(() => null), null);
 
 const crashRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cnyos-crash-recovery-'));
