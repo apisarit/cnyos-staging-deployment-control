@@ -7,6 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = path.join(root, '.github', 'workflows', 'admit-vps-staging-release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const service = fs.readFileSync(path.join(root, 'systemd', 'cnyos-staging-broker.service'), 'utf8');
+const brokerCore = fs.readFileSync(path.join(root, 'broker', 'core.mjs'), 'utf8');
 const executableLines = workflow
   .split('\n')
   .map(line => line.replace(/\s+#.*$/, ''))
@@ -57,6 +58,10 @@ assert.match(workflow, /github\.triggering_actor/);
 assert.match(workflow, /CONTROLLER_ACTOR" == "apisarit" && "\$CONTROLLER_ACTOR_ID" == "216305243"/);
 assert.match(workflow, /apisarit\/chananya-clinical-wellness-os/);
 assert.match(workflow, /"workflow_file": "deploy-vps-staging\.yml"/);
+assert.match(workflow, /timeout-minutes: 20/);
+assert.match(workflow, /--connect-timeout 5 --max-time 1080/);
+assert.match(brokerCore, /deployer: executableAdapter\(deployerCommand, \{ timeoutMs: 15 \* 60_000 \}\)/);
+assert.ok(2 * 30 + 15 * 60 < 1080 && 1080 < 20 * 60, 'full adapter budget must be shorter than client and job timeouts');
 assert.match(workflow, /"ref": "refs\/heads\/codex\/vps-staging-candidate-20260915"/);
 assert.doesNotMatch(workflow, /"producer"[\s\S]{0,300}"ref": "refs\/heads\/main"/);
 assert.match(workflow, /producer_run_id/);

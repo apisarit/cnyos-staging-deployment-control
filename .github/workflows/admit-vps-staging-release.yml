@@ -41,7 +41,7 @@ jobs:
     environment:
       name: staging
     runs-on: [self-hosted, linux, x64, cnyos-staging-deployer]
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Validate immutable release inputs
         shell: bash
@@ -182,7 +182,7 @@ jobs:
           PY
 
           curl --fail --silent --show-error \
-            --connect-timeout 5 --max-time 30 \
+            --connect-timeout 5 --max-time 1080 \
             --cacert /etc/cnyos-broker/ca.pem \
             -H "Authorization: Bearer ${oidc_token}" \
             -H "Content-Type: application/json" \
