@@ -293,6 +293,7 @@ async function deployStagingInner(body, {
     await receiptWriter(receiptPath, {
       schema_version: 1, request_id: requestId, source_commit: candidate.source_commit,
       archive_sha256: candidate.archive_sha256, state: 'failed', rollback_succeeded: rollbackSucceeded,
+      failure_code: error instanceof AdapterError ? error.code : 'DEPLOYER_FAILED',
       failed_release: failedDir, at: new Date().toISOString(),
     });
     throw error;
