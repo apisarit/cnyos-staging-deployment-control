@@ -141,6 +141,7 @@ assert.equal(deployed.state, 'web_staged');
 assert.equal((await fs.readlink(path.join(deployRoot, 'current'))), path.join(deployRoot, 'releases', commit));
 assert.equal(JSON.parse(await fs.readFile(deployed.receipt, 'utf8')).state, 'completed');
 assert.ok(dockerCalls.some(call => call.args.includes('build')));
+assert.ok(dockerCalls.every(call => call.options.env.DOCKER_CONFIG === path.resolve(deploySpoolRoot, '..', 'docker-config')));
 assert.ok(dockerCalls.some(call => call.args.includes('--wait')));
 assert.equal((await deployStaging(deployBody, {
   rootDir: deployRoot,
@@ -211,6 +212,7 @@ const recoveredBody = {
   request_id: `101.1.${commit}`,
   artifact: { ...deployBody.artifact, spoolDir: crashSpool },
 };
+const crashCallStart = dockerCalls.length;
 assert.equal((await deployStaging(recoveredBody, {
   rootDir: crashRoot,
   spoolRoot: crashSpoolRoot,
@@ -220,6 +222,8 @@ assert.equal((await deployStaging(recoveredBody, {
   supabaseHealth: async () => {},
   requireRoot: false,
 })).state, 'web_staged');
+assert.ok(dockerCalls.slice(crashCallStart).every(call =>
+  call.options.env.DOCKER_CONFIG === path.resolve(crashSpoolRoot, '..', 'docker-config')));
 assert.equal(JSON.parse(await fs.readFile(path.join(crashRoot, 'state', 'receipts', `${interruptedRequest}.json`), 'utf8')).state, 'recovered');
 assert.equal(JSON.parse(await fs.readFile(path.join(crashRoot, 'state', 'receipts', `${recoveredBody.request_id}.json`), 'utf8')).state, 'completed');
 process.stdout.write('CNYOS adapter contracts: passed (GitHub bindings, ZIP/TAR traversal, digest and expiry rejection)\n');
