@@ -1,0 +1,8 @@
+{
+  "name": "@cnyos/staging-oidc-broker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/broker-contract.mjs"
+  }
+}

@@ -1,0 +1,24 @@
+[Unit]
+Description=CNYOS staging OIDC admission broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/cnyos-staging-controller/broker
+ExecStart=/usr/bin/node /opt/cnyos-staging-controller/broker/server.mjs
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cnyos-broker
+InaccessiblePaths=/home /root
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

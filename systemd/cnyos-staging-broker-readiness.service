@@ -1,0 +1,9 @@
+[Unit]
+Description=One-shot CNYOS staging broker readiness probe
+After=cnyos-staging-broker.service
+Requires=cnyos-staging-broker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/curl --fail --silent --show-error --cacert /etc/cnyos-broker/ca.pem https://127.0.0.1:9443/readyz
