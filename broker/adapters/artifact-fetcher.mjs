@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ARTIFACT_NAME, AdapterError, createGitHubClient, readRootOnlyToken, readZipExact, validateReleaseRequest, writeRootOnly } from './common.mjs';
+import { ARTIFACT_NAME, AdapterError, PRODUCER_BRANCH, createGitHubClient, readRootOnlyToken, readZipExact, validateReleaseRequest, writeRootOnly } from './common.mjs';
 
 async function input() { return JSON.parse(await new Promise((resolve, reject) => { const chunks = []; process.stdin.on('data', chunk => chunks.push(chunk)); process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8'))); process.stdin.on('error', reject); })); }
 async function main() {
@@ -11,7 +11,7 @@ async function main() {
   const client = createGitHubClient({ token: await readRootOnlyToken() });
   const [repo, run, artifact] = await Promise.all([client.repo(producer.repository), client.run(producer.repository, candidate.producer_run_id), client.artifact(producer.repository, candidate.artifact_id)]);
   if (repo.visibility !== 'public' || repo.full_name !== producer.repository) throw new AdapterError('PRODUCER_VISIBILITY_INVALID');
-  if (run.head_sha !== candidate.source_commit || run.head_branch !== 'main' || run.path !== '.github/workflows/deploy-vps-staging.yml' || run.status !== 'completed' || run.conclusion !== 'success') throw new AdapterError('PRODUCER_RUN_NOT_EXACT');
+  if (run.head_sha !== candidate.source_commit || run.head_branch !== PRODUCER_BRANCH || run.path !== '.github/workflows/deploy-vps-staging.yml' || run.status !== 'completed' || run.conclusion !== 'success') throw new AdapterError('PRODUCER_RUN_NOT_EXACT');
   if (artifact.id !== candidate.artifact_id || artifact.name !== ARTIFACT_NAME(candidate.source_commit, candidate.producer_run_id) || artifact.expired === true || artifact.workflow_run?.id !== candidate.producer_run_id) throw new AdapterError('ARTIFACT_METADATA_INVALID');
   const archive = await client.downloadArtifact(producer.repository, candidate.artifact_id);
   const archiveName = `cnyos-static-${candidate.source_commit}.tar.gz`;

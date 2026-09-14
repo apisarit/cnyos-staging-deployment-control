@@ -6,7 +6,8 @@ import zlib from 'node:zlib';
 
 export const PRODUCER_REPOSITORY = 'apisarit/chananya-clinical-wellness-os';
 export const PRODUCER_REPOSITORY_ID = 1318182797;
-export const PRODUCER_REF = 'refs/heads/main';
+export const PRODUCER_BRANCH = 'codex/vps-staging-candidate-20260915';
+export const PRODUCER_REF = `refs/heads/${PRODUCER_BRANCH}`;
 export const PRODUCER_WORKFLOW = 'deploy-vps-staging.yml';
 export const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
 export const CONTROLLER_REPOSITORY_ID = 1362863285;
@@ -161,7 +162,7 @@ export async function verifyCandidate(body, client, { workflowShaPin } = {}) {
   if (producerRepo.id !== PRODUCER_REPOSITORY_ID || producerRepo.default_branch !== 'main' ||
       producerRepo.visibility !== 'public' || producerRepo.private !== false) throw new AdapterError('PRODUCER_VISIBILITY_INVALID');
   exact(producerRun.id, a.producer_run_id, 'PRODUCER_RUN_ID_MISMATCH'); exact(producerRun.head_sha, a.source_commit, 'PRODUCER_COMMIT_MISMATCH');
-  exact(producerRun.head_branch, 'main', 'PRODUCER_BRANCH_MISMATCH'); exact(producerRun.path, `.github/workflows/${PRODUCER_WORKFLOW}`, 'PRODUCER_WORKFLOW_PATH_MISMATCH');
+  exact(producerRun.head_branch, PRODUCER_BRANCH, 'PRODUCER_BRANCH_MISMATCH'); exact(producerRun.path, `.github/workflows/${PRODUCER_WORKFLOW}`, 'PRODUCER_WORKFLOW_PATH_MISMATCH');
   if (producerRun.status !== 'completed' || producerRun.conclusion !== 'success') throw new AdapterError('PRODUCER_RUN_NOT_SUCCESSFUL');
   exact(artifact.id, a.artifact_id, 'ARTIFACT_ID_MISMATCH'); exact(artifact.name, ARTIFACT_NAME(a.source_commit, a.producer_run_id), 'ARTIFACT_NAME_MISMATCH');
   if (artifact.expired === true || artifact.workflow_run?.id !== a.producer_run_id || artifact.size_in_bytes < 1) throw new AdapterError('ARTIFACT_METADATA_INVALID');

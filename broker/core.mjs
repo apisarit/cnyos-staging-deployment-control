@@ -25,7 +25,7 @@ const CONTROLLER_REF = 'refs/heads/main';
 const CONTROLLER_WORKFLOW = 'Admit VPS staging release';
 const CONTROLLER_WORKFLOW_FILE = 'admit-vps-staging-release.yml';
 const PRODUCER_REPOSITORY = 'apisarit/chananya-clinical-wellness-os';
-const PRODUCER_REF = 'refs/heads/main';
+const PRODUCER_REF = 'refs/heads/codex/vps-staging-candidate-20260915';
 const PRODUCER_WORKFLOW = 'deploy-vps-staging.yml';
 
 export class BrokerError extends Error {
