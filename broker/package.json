@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/broker-contract.mjs"
+    "test": "node ../tests/broker-contract.mjs && node ../tests/adapters-contract.mjs"
   }
 }

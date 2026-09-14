@@ -13,13 +13,13 @@ const baseBody = (suffix = 'a'.repeat(40)) => ({
   schema_version: 1,
   request_id: `9001.1.${suffix}`,
   environment: 'staging',
-  controller: { repository: 'apisarit/cnyos-staging-deployment-control', ref: 'refs/heads/main', workflow: 'admit-vps-staging-release.yml', run_id: 9001, run_attempt: 1, actor: 'apisarit' },
+  controller: { repository: 'apisarit/cnyos-staging-deployment-control', repository_id: 1362863285, ref: 'refs/heads/main', ref_protected: true, workflow: 'Admit VPS staging release', workflow_ref: 'apisarit/cnyos-staging-deployment-control/.github/workflows/admit-vps-staging-release.yml@refs/heads/main', workflow_sha: '9'.repeat(40), run_id: 9001, run_attempt: 1, actor: 'apisarit', actor_id: 216305243, triggering_actor: 'apisarit' },
   producer: { repository: 'apisarit/chananya-clinical-wellness-os', ref: 'refs/heads/main', workflow_file: 'deploy-vps-staging.yml' },
   candidate: { source_commit: 'b'.repeat(40), artifact_id: 7001, producer_run_id: 8001, archive_sha256: 'c'.repeat(64), release_request_sha256: 'd'.repeat(64) },
 });
 function tokenFor(body, changes = {}) {
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: 'offline-test' })).toString('base64url');
-  const claims = { iss: 'https://token.actions.githubusercontent.com', aud: 'cnyos-vps-staging-broker', repository: 'apisarit/cnyos-staging-deployment-control', ref: 'refs/heads/main', workflow_ref: 'apisarit/cnyos-staging-deployment-control/.github/workflows/admit-vps-staging-release.yml@refs/heads/main', environment: 'staging', runner_environment: 'self-hosted', ref_protected: true, event_name: 'workflow_dispatch', run_id: body.controller.run_id, run_attempt: body.controller.run_attempt, actor: body.controller.actor, nbf: now - 2, exp: now + 300, ...changes };
+  const claims = { iss: 'https://token.actions.githubusercontent.com', aud: 'cnyos-vps-staging-broker', sub: 'repo:apisarit/cnyos-staging-deployment-control:environment:staging', repository: 'apisarit/cnyos-staging-deployment-control', repository_id: String(body.controller.repository_id), repository_visibility: 'private', ref: 'refs/heads/main', workflow: 'Admit VPS staging release', workflow_ref: body.controller.workflow_ref, workflow_sha: body.controller.workflow_sha, environment: 'staging', runner_environment: 'self-hosted', event_name: 'workflow_dispatch', run_id: body.controller.run_id, run_attempt: body.controller.run_attempt, actor: body.controller.actor, actor_id: String(body.controller.actor_id), jti: 'offline-test-jti-0001', iat: now - 2, nbf: now - 2, exp: now + 300, ...changes };
   const encoded = Buffer.from(JSON.stringify(claims)).toString('base64url');
   const signature = crypto.sign('RSA-SHA256', Buffer.from(`${header}.${encoded}`), privateKey).toString('base64url');
   return `${header}.${encoded}.${signature}`;
@@ -34,7 +34,8 @@ function request(server, body, token = tokenFor(body), headers = {}) {
 }
 
 assert.doesNotThrow(() => validateAdmissionRequest(baseBody(), baseBody().request_id));
-for (const [name, changes] of [['audience', { aud: 'wrong' }], ['issuer', { iss: 'https://evil.example' }], ['protected ref', { ref_protected: false }], ['runner', { runner_environment: 'github-hosted' }], ['workflow', { workflow_ref: 'apisarit/cnyos-staging-deployment-control/.github/workflows/other.yml@refs/heads/main' }]]) {
+assert.throws(() => validateAdmissionRequest({ ...baseBody(), unexpected: true }, baseBody().request_id), /REQUEST_INVALID/);
+for (const [name, changes] of [['audience', { aud: 'wrong' }], ['issuer', { iss: 'https://evil.example' }], ['repository ID', { repository_id: '987654321' }], ['visibility', { repository_visibility: 'public' }], ['runner', { runner_environment: 'github-hosted' }], ['workflow', { workflow_ref: 'apisarit/cnyos-staging-deployment-control/.github/workflows/other.yml@refs/heads/main' }], ['workflow SHA', { workflow_sha: '8'.repeat(40) }]]) {
   const body = baseBody(name === 'issuer' ? 'e'.repeat(40) : 'a'.repeat(40));
   await assert.rejects(() => verifyOidcToken(tokenFor(body, changes), body, { jwks: { keys: [jwk] }, now }), BrokerError, name);
 }

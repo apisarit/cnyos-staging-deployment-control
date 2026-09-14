@@ -23,7 +23,7 @@ The systemd template uses these paths:
 /etc/cnyos-broker/tls/server.crt       root:root, not group/world writable
 /etc/cnyos-broker/tls/server.key       root:root, not group/world writable
 /etc/cnyos-broker/ca.pem               root:root, not group/world writable
-/etc/cnyos-broker/github-app-credentials.json
+/etc/cnyos-broker/github-token        root:root, mode 0600; never printed
 /var/lib/cnyos-broker                  root:root, mode 0700
 /usr/local/libexec/cnyos-staging-candidate-verifier
 /usr/local/libexec/cnyos-staging-artifact-fetcher
@@ -35,3 +35,57 @@ exactly JSON containing `{"ok":true}`. Their stderr is discarded and their
 stdout is size-limited. They must implement their own artifact digest and
 release-request binding checks; a successful response is not an independent
 security approval.
+
+## Adapter boundary (staging only)
+
+The reference adapters in `broker/adapters/` are fail-closed and are intended
+to be installed by a root-owned VPS service account. The candidate verifier
+accepts the complete admission body, not an untrusted subset. It checks the
+private controller repository, protected `main` branch and required review
+protection through the GitHub API, then binds the exact controller run and
+workflow SHA. It separately checks that the public producer repository's
+`deploy-vps-staging.yml` run completed successfully at the requested commit.
+The GitHub token is read only from `CNYOS_GITHUB_TOKEN_FILE`; that file must be
+root-owned and mode 0600 (or stricter), and is never printed.
+
+The artifact fetcher repeats the producer run and artifact metadata checks,
+downloads the GitHub Actions artifact with credentials removed on every
+redirect, and accepts exactly these three regular files:
+
+```text
+cnyos-static-<40-character-source-commit>.tar.gz
+release-request.json
+SHA256SUMS
+```
+
+It rejects traversal, symlink/device entries, duplicate/overlapping ZIP
+ranges, ZIP bombs over the fixed limits, expired artifacts, mismatched run or
+source bindings, and digest mismatches. Files are extracted into a 0700 spool
+directory and the returned descriptor contains only that directory and fixed
+names. The deployer revalidates this descriptor and the release packet before
+using it.
+
+The deployer never executes candidate code or candidate configuration. It
+extracts only the static tarball, verifies `runtime-publish-manifest.json` and
+`deploy-manifest.json`, and copies the trusted templates from `broker/runtime/`
+into an immutable commit-named release directory. Docker Compose is invoked
+with `spawn` and `shell:false`; the web image is loopback-only and uses the
+existing native Caddy route. A failed health check attempts to bring the
+previous release back, and a durable request receipt prevents a completed
+request from being replayed. No production target, Caddy whole-file cutover,
+raw-volume backup, or human security approval is implemented by these
+adapters.
+
+Example installation (performed separately on the VPS, after review):
+
+```text
+install -o root -g root -m 0755 broker/adapters/candidate-verifier.mjs /usr/local/libexec/cnyos-staging-candidate-verifier
+install -o root -g root -m 0755 broker/adapters/artifact-fetcher.mjs /usr/local/libexec/cnyos-staging-artifact-fetcher
+install -o root -g root -m 0755 broker/adapters/deployer.mjs /usr/local/libexec/cnyos-staging-deployer
+install -d -o root -g root -m 0700 /var/lib/cnyos-broker/spool
+```
+
+The VPS must provide a root-owned token file, CA/TLS files, and the systemd
+unit's readiness checks before `/readyz` can become healthy. Contract tests use
+fixtures and mocked GitHub responses only; passing them is not live staging
+evidence or a release authorization.

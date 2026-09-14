@@ -1,0 +1,210 @@
+name: Admit VPS staging release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: "Exact 40-character commit produced by the public app pipeline"
+        required: true
+        type: string
+      candidate_run_id:
+        description: "GitHub Actions run ID that produced the immutable candidate"
+        required: true
+        type: string
+      candidate_artifact_id:
+        description: "Immutable artifact ID containing the candidate"
+        required: true
+        type: string
+      candidate_archive_sha256:
+        description: "SHA-256 of the candidate archive"
+        required: true
+        type: string
+      release_request_sha256:
+        description: "SHA-256 of the producer release-request.json"
+        required: true
+        type: string
+
+# This workflow is an admission request only. The root-owned broker is the
+# only component allowed to download, verify, and invoke the VPS deployer.
+# It intentionally has no checkout, Docker, sudo, or candidate execution.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cnyos-vps-staging-admission
+  cancel-in-progress: false
+
+jobs:
+  admit:
+    name: Request broker admission
+    environment:
+      name: staging
+    runs-on: [self-hosted, linux, x64, cnyos-staging-deployer]
+    timeout-minutes: 10
+    steps:
+      - name: Validate immutable release inputs
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
+          CANDIDATE_ARCHIVE_SHA256: ${{ inputs.candidate_archive_sha256 }}
+          RELEASE_REQUEST_SHA256: ${{ inputs.release_request_sha256 }}
+          CONTROLLER_REPOSITORY: ${{ github.repository }}
+          CONTROLLER_REPOSITORY_ID: ${{ github.repository_id }}
+          CONTROLLER_REF: ${{ github.ref }}
+          CONTROLLER_REF_PROTECTED: ${{ github.ref_protected }}
+          CONTROLLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          CONTROLLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CONTROLLER_ACTOR: ${{ github.actor }}
+          CONTROLLER_ACTOR_ID: ${{ github.actor_id }}
+          CONTROLLER_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "source_commit must be a 40-character lowercase SHA" >&2; exit 1; }
+          [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "candidate_run_id must be a positive decimal ID" >&2; exit 1; }
+          [[ "$CANDIDATE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || { echo "candidate_artifact_id must be a positive decimal ID" >&2; exit 1; }
+          [[ "$CANDIDATE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "candidate_archive_sha256 must be a 64-character lowercase SHA-256" >&2; exit 1; }
+          [[ "$RELEASE_REQUEST_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "release_request_sha256 must be a 64-character lowercase SHA-256" >&2; exit 1; }
+          [[ "$CONTROLLER_REPOSITORY" == "apisarit/cnyos-staging-deployment-control" ]] || { echo "unexpected controller repository" >&2; exit 1; }
+          [[ "$CONTROLLER_REPOSITORY_ID" == "1362863285" ]] || { echo "controller repository ID is invalid" >&2; exit 1; }
+          [[ "$CONTROLLER_REF" == "refs/heads/main" ]] || { echo "staging admission requires the protected controller main ref" >&2; exit 1; }
+          [[ "$CONTROLLER_REF_PROTECTED" == "true" ]] || { echo "controller main ref is not protected" >&2; exit 1; }
+          [[ "$CONTROLLER_WORKFLOW_REF" == "apisarit/cnyos-staging-deployment-control/.github/workflows/admit-vps-staging-release.yml@refs/heads/main" ]] || { echo "unexpected controller workflow ref" >&2; exit 1; }
+          [[ "$CONTROLLER_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "controller workflow SHA is invalid" >&2; exit 1; }
+          [[ "$CONTROLLER_ACTOR" == "apisarit" && "$CONTROLLER_ACTOR_ID" == "216305243" ]] || { echo "controller actor is not authorized" >&2; exit 1; }
+          [[ "$CONTROLLER_TRIGGERING_ACTOR" == "$CONTROLLER_ACTOR" ]] || { echo "workflow rerun actor differs from the authorized actor" >&2; exit 1; }
+          [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]] || { echo "GitHub OIDC request URL is unavailable" >&2; exit 1; }
+          [[ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]] || { echo "GitHub OIDC request token is unavailable" >&2; exit 1; }
+          [[ "$ACTIONS_ID_TOKEN_REQUEST_URL" == https://* ]] || { echo "GitHub OIDC URL must use HTTPS" >&2; exit 1; }
+          test -s /etc/cnyos-broker/ca.pem || { echo "broker CA is missing" >&2; exit 1; }
+
+      - name: Request single-use OIDC broker admission
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
+          CANDIDATE_ARCHIVE_SHA256: ${{ inputs.candidate_archive_sha256 }}
+          RELEASE_REQUEST_SHA256: ${{ inputs.release_request_sha256 }}
+          CONTROLLER_REPOSITORY: ${{ github.repository }}
+          CONTROLLER_REPOSITORY_ID: ${{ github.repository_id }}
+          CONTROLLER_REF: ${{ github.ref }}
+          CONTROLLER_REF_PROTECTED: ${{ github.ref_protected }}
+          CONTROLLER_WORKFLOW: ${{ github.workflow }}
+          CONTROLLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          CONTROLLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -Eeuo pipefail
+
+          oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=cnyos-vps-staging-broker"
+          oidc_response="$(curl --fail --silent --show-error \
+            --connect-timeout 5 --max-time 20 \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "$oidc_url")" || {
+              echo "GitHub OIDC token request failed" >&2
+              exit 1
+            }
+          oidc_token="$(printf '%s' "$oidc_response" | python3 -c 'import json,sys; value=json.load(sys.stdin).get("value"); raise SystemExit("OIDC response did not contain a token") if not isinstance(value,str) or not value else print(value)')" || {
+            echo "GitHub OIDC response was invalid" >&2
+            exit 1
+          }
+
+          request_id="${RUN_ID}.${RUN_ATTEMPT}.${SOURCE_COMMIT}"
+          payload_file="$(mktemp)"
+          response_file="$(mktemp)"
+          cleanup() { rm -f "$payload_file" "$response_file"; }
+          trap cleanup EXIT
+
+          SOURCE_COMMIT="$SOURCE_COMMIT" \
+          CANDIDATE_RUN_ID="$CANDIDATE_RUN_ID" \
+          CANDIDATE_ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID" \
+          CANDIDATE_ARCHIVE_SHA256="$CANDIDATE_ARCHIVE_SHA256" \
+          RELEASE_REQUEST_SHA256="$RELEASE_REQUEST_SHA256" \
+          CONTROLLER_REPOSITORY="$CONTROLLER_REPOSITORY" \
+          CONTROLLER_REPOSITORY_ID="$CONTROLLER_REPOSITORY_ID" \
+          CONTROLLER_REF="$CONTROLLER_REF" \
+          CONTROLLER_REF_PROTECTED="$CONTROLLER_REF_PROTECTED" \
+          CONTROLLER_WORKFLOW="$CONTROLLER_WORKFLOW" \
+          CONTROLLER_WORKFLOW_REF="$CONTROLLER_WORKFLOW_REF" \
+          CONTROLLER_WORKFLOW_SHA="$CONTROLLER_WORKFLOW_SHA" \
+          RUN_ID="$RUN_ID" RUN_ATTEMPT="$RUN_ATTEMPT" ACTOR="$ACTOR" \
+          ACTOR_ID="$ACTOR_ID" TRIGGERING_ACTOR="$TRIGGERING_ACTOR" \
+          REQUEST_ID="$request_id" \
+          python3 - "$payload_file" <<'PY'
+          import json
+          import os
+          import sys
+
+          payload = {
+              "schema_version": 1,
+              "request_id": os.environ["REQUEST_ID"],
+              "environment": "staging",
+              "controller": {
+                  "repository": os.environ["CONTROLLER_REPOSITORY"],
+                  "repository_id": int(os.environ["CONTROLLER_REPOSITORY_ID"]),
+                  "ref": os.environ["CONTROLLER_REF"],
+                  "ref_protected": os.environ["CONTROLLER_REF_PROTECTED"] == "true",
+                  "workflow": os.environ["CONTROLLER_WORKFLOW"],
+                  "workflow_ref": os.environ["CONTROLLER_WORKFLOW_REF"],
+                  "workflow_sha": os.environ["CONTROLLER_WORKFLOW_SHA"],
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+                  "actor": os.environ["ACTOR"],
+                  "actor_id": int(os.environ["ACTOR_ID"]),
+                  "triggering_actor": os.environ["TRIGGERING_ACTOR"],
+              },
+              "producer": {
+                  "repository": "apisarit/chananya-clinical-wellness-os",
+                  "ref": "refs/heads/main",
+                  "workflow_file": "deploy-vps-staging.yml",
+              },
+              "candidate": {
+                  "source_commit": os.environ["SOURCE_COMMIT"],
+                  "artifact_id": int(os.environ["CANDIDATE_ARTIFACT_ID"]),
+                  "producer_run_id": int(os.environ["CANDIDATE_RUN_ID"]),
+                  "archive_sha256": os.environ["CANDIDATE_ARCHIVE_SHA256"],
+                  "release_request_sha256": os.environ["RELEASE_REQUEST_SHA256"],
+              },
+          }
+          with open(sys.argv[1], "w", encoding="utf-8") as stream:
+              json.dump(payload, stream, sort_keys=True, separators=(",", ":"))
+              stream.write("\n")
+          PY
+
+          curl --fail --silent --show-error \
+            --connect-timeout 5 --max-time 30 \
+            --cacert /etc/cnyos-broker/ca.pem \
+            -H "Authorization: Bearer ${oidc_token}" \
+            -H "Content-Type: application/json" \
+            -H "X-CNYOS-Request-ID: ${request_id}" \
+            --data-binary "@${payload_file}" \
+            --output "$response_file" \
+            https://127.0.0.1:9443/v1/staging/releases || {
+              echo "staging broker rejected or could not admit the release" >&2
+              exit 1
+            }
+          REQUEST_ID="$request_id" python3 - "$response_file" <<'PY'
+          import json
+          import os
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              value = json.load(stream)
+          if value != {
+              "schema_version": 1,
+              "request_id": os.environ["REQUEST_ID"],
+              "status": "accepted",
+          }:
+              raise SystemExit("broker response did not exactly confirm this request")
+          PY
+          echo "Staging admission accepted by broker for request ${request_id}."

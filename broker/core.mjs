@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { constants as fsConstants } from 'node:fs';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import https from 'node:https';
@@ -16,8 +17,12 @@ const ISSUER = 'https://token.actions.githubusercontent.com';
 const JWKS_URL = `${ISSUER}/.well-known/jwks`;
 const AUDIENCE = 'cnyos-vps-staging-broker';
 const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
+const CONTROLLER_REPOSITORY_ID = 1362863285;
+const CONTROLLER_ACTOR = 'apisarit';
+const CONTROLLER_ACTOR_ID = 216305243;
 const CONTROLLER_REF = 'refs/heads/main';
-const CONTROLLER_WORKFLOW = 'admit-vps-staging-release.yml';
+const CONTROLLER_WORKFLOW = 'Admit VPS staging release';
+const CONTROLLER_WORKFLOW_FILE = 'admit-vps-staging-release.yml';
 const PRODUCER_REPOSITORY = 'apisarit/chananya-clinical-wellness-os';
 const PRODUCER_REF = 'refs/heads/main';
 const PRODUCER_WORKFLOW = 'deploy-vps-staging.yml';
@@ -49,24 +54,33 @@ function positiveInt(value, code) {
   return value;
 }
 
+function exactKeys(value, keys, code) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).sort().join('\0') !== [...keys].sort().join('\0')) throw new BrokerError(code);
+  return value;
+}
+
 function sha256(value) { return /^[0-9a-f]{64}$/.test(value); }
 
 export function validateAdmissionRequest(body, headerRequestId) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BrokerError('REQUEST_INVALID');
+  exactKeys(body, ['schema_version', 'request_id', 'environment', 'controller', 'producer', 'candidate'], 'REQUEST_INVALID');
   if (body.schema_version !== 1 || body.environment !== 'staging') throw new BrokerError('REQUEST_SCOPE_INVALID');
   const requestId = exactString(body.request_id, /^[1-9][0-9]*\.[1-9][0-9]*\.[0-9a-f]{40}$/, 'REQUEST_ID_INVALID');
   if (headerRequestId !== requestId) throw new BrokerError('REQUEST_ID_MISMATCH');
-  const c = body.controller;
-  if (!c || c.repository !== CONTROLLER_REPOSITORY || c.ref !== CONTROLLER_REF ||
+  const c = exactKeys(body.controller, ['repository', 'repository_id', 'ref', 'ref_protected', 'workflow', 'workflow_ref', 'workflow_sha', 'run_id', 'run_attempt', 'actor', 'actor_id', 'triggering_actor'], 'CONTROLLER_BINDING_INVALID');
+  if (c.repository !== CONTROLLER_REPOSITORY || c.ref !== CONTROLLER_REF ||
       c.workflow !== CONTROLLER_WORKFLOW) throw new BrokerError('CONTROLLER_BINDING_INVALID');
+  if (c.repository_id !== CONTROLLER_REPOSITORY_ID || c.ref_protected !== true ||
+      c.workflow_ref !== `${CONTROLLER_REPOSITORY}/.github/workflows/${CONTROLLER_WORKFLOW_FILE}@${CONTROLLER_REF}` ||
+      !/^[0-9a-f]{40}$/.test(c.workflow_sha)) throw new BrokerError('CONTROLLER_IMMUTABLE_IDENTITY_INVALID');
   positiveInt(c.run_id, 'CONTROLLER_RUN_INVALID');
   positiveInt(c.run_attempt, 'CONTROLLER_ATTEMPT_INVALID');
-  exactString(c.actor, /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/, 'CONTROLLER_ACTOR_INVALID');
-  const p = body.producer;
-  if (!p || p.repository !== PRODUCER_REPOSITORY || p.ref !== PRODUCER_REF ||
+  if (c.actor !== CONTROLLER_ACTOR || c.actor_id !== CONTROLLER_ACTOR_ID ||
+      c.triggering_actor !== CONTROLLER_ACTOR) throw new BrokerError('CONTROLLER_ACTOR_INVALID');
+  const p = exactKeys(body.producer, ['repository', 'ref', 'workflow_file'], 'PRODUCER_BINDING_INVALID');
+  if (p.repository !== PRODUCER_REPOSITORY || p.ref !== PRODUCER_REF ||
       p.workflow_file !== PRODUCER_WORKFLOW) throw new BrokerError('PRODUCER_BINDING_INVALID');
-  const candidate = body.candidate;
-  if (!candidate) throw new BrokerError('CANDIDATE_INVALID');
+  const candidate = exactKeys(body.candidate, ['source_commit', 'artifact_id', 'producer_run_id', 'archive_sha256', 'release_request_sha256'], 'CANDIDATE_INVALID');
   exactString(candidate.source_commit, /^[0-9a-f]{40}$/, 'CANDIDATE_COMMIT_INVALID');
   positiveInt(candidate.artifact_id, 'CANDIDATE_ARTIFACT_INVALID');
   positiveInt(candidate.producer_run_id, 'CANDIDATE_RUN_INVALID');
@@ -90,16 +104,21 @@ export function expectedOidcClaims(body) {
   return {
     iss: ISSUER,
     aud: AUDIENCE,
+    sub: `repo:${CONTROLLER_REPOSITORY}:environment:staging`,
     repository: CONTROLLER_REPOSITORY,
+    repository_id: String(CONTROLLER_REPOSITORY_ID),
+    repository_visibility: 'private',
     ref: CONTROLLER_REF,
-    workflow_ref: `${CONTROLLER_REPOSITORY}/.github/workflows/${CONTROLLER_WORKFLOW}@${CONTROLLER_REF}`,
+    workflow: CONTROLLER_WORKFLOW,
+    workflow_ref: `${CONTROLLER_REPOSITORY}/.github/workflows/${CONTROLLER_WORKFLOW_FILE}@${CONTROLLER_REF}`,
+    workflow_sha: body.controller.workflow_sha,
     environment: 'staging',
     runner_environment: 'self-hosted',
-    ref_protected: true,
     event_name: 'workflow_dispatch',
     run_id: body.controller.run_id,
     run_attempt: body.controller.run_attempt,
     actor: body.controller.actor,
+    actor_id: String(CONTROLLER_ACTOR_ID),
   };
 }
 
@@ -134,10 +153,12 @@ export async function verifyOidcToken(token, body, { jwks = null, now = Math.flo
   if (parts.length !== 3) throw new BrokerError('OIDC_TOKEN_INVALID', 401);
   const header = parseJson(base64urlDecode(parts[0]).toString('utf8'), 'OIDC_TOKEN_INVALID');
   const claims = parseJson(base64urlDecode(parts[1]).toString('utf8'), 'OIDC_TOKEN_INVALID');
-  if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid ||
+  if (header.alg !== 'RS256' || header.typ !== 'JWT' || typeof header.kid !== 'string' || !header.kid ||
       typeof claims.iss !== 'string' || claims.iss !== ISSUER ||
       claims.aud !== AUDIENCE || typeof claims.exp !== 'number' || typeof claims.nbf !== 'number' ||
-      claims.exp <= now || claims.nbf > now + 30) throw new BrokerError('OIDC_CLAIMS_INVALID', 401);
+      typeof claims.iat !== 'number' || typeof claims.jti !== 'string' || claims.jti.length < 16 ||
+      claims.exp <= now || claims.exp > now + 600 || claims.nbf > now + 30 ||
+      claims.iat > now + 30 || claims.iat < now - 600) throw new BrokerError('OIDC_CLAIMS_INVALID', 401);
   const keys = jwks ?? await fetchJsonHttps(JWKS_URL);
   if (!keys || !Array.isArray(keys.keys)) throw new BrokerError('OIDC_JWKS_INVALID', 503);
   const jwk = keys.keys.find(item => item.kid === header.kid);
@@ -147,7 +168,6 @@ export async function verifyOidcToken(token, body, { jwks = null, now = Math.flo
   const expected = expectedOidcClaims(body);
   for (const [name, value] of Object.entries(expected)) {
     if (name === 'run_id' || name === 'run_attempt') { if (String(claims[name]) !== String(value)) throw new BrokerError('OIDC_RUN_BINDING_INVALID', 401); }
-    else if (name === 'ref_protected') { if (!(claims[name] === true || claims[name] === 'true')) throw new BrokerError('OIDC_REF_NOT_PROTECTED', 401); }
     else claimString(claims, name, value);
   }
   claimRun(claims, body);
@@ -165,6 +185,19 @@ async function withJournalLock(lockPath, operation) {
   try { return await operation(); } finally { await fs.rm(lockPath, { recursive: true, force: true }); }
 }
 
+async function appendDurably(filePath, line) {
+  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND | fsConstants.O_NOFOLLOW;
+  const handle = await fs.open(filePath, flags, 0o600);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0) throw new BrokerError('JOURNAL_PERMISSION_INVALID', 503);
+    await handle.writeFile(line, 'utf8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
 export function createJournal(directory) {
   const journalPath = path.join(directory, 'admissions.jsonl');
   const lockPath = `${journalPath}.lock`;
@@ -176,12 +209,12 @@ export function createJournal(directory) {
         try { contents = await fs.readFile(journalPath, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
         const entries = contents.split('\n').filter(Boolean).map(line => JSON.parse(line));
         if (entries.some(entry => entry.request_id === requestId && entry.state !== 'released')) throw new BrokerError('REQUEST_REPLAY', 409);
-        await fs.appendFile(journalPath, `${JSON.stringify({ request_id: requestId, state: 'reserved', at: new Date().toISOString(), ...metadata })}\n`, { mode: 0o600 });
+        await appendDurably(journalPath, `${JSON.stringify({ request_id: requestId, state: 'reserved', at: new Date().toISOString(), ...metadata })}\n`);
       });
     },
     async finish(requestId, state) {
       return withJournalLock(lockPath, async () => {
-        await fs.appendFile(journalPath, `${JSON.stringify({ request_id: requestId, state, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+        await appendDurably(journalPath, `${JSON.stringify({ request_id: requestId, state, at: new Date().toISOString() })}\n`);
       });
     },
     path: journalPath,
@@ -190,9 +223,12 @@ export function createJournal(directory) {
 
 function executableAdapter(command, { timeoutMs = LIMITS.adapterTimeoutMs } = {}) {
   return async payload => new Promise((resolve, reject) => {
-    const child = spawn(command, [], { stdio: ['pipe', 'pipe', 'ignore'], shell: false });
+    const child = spawn(command, [], { stdio: ['pipe', 'pipe', 'ignore'], shell: false, detached: true });
     const output = []; let bytes = 0;
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new BrokerError('ADAPTER_TIMEOUT', 503)); }, timeoutMs);
+    const terminateTree = () => {
+      try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* already exited */ } }
+    };
+    const timer = setTimeout(() => { terminateTree(); reject(new BrokerError('ADAPTER_TIMEOUT', 503)); }, timeoutMs);
     child.stdout.on('data', chunk => { bytes += chunk.length; if (bytes > 64 * 1024) { child.kill('SIGKILL'); reject(new BrokerError('ADAPTER_OUTPUT_TOO_LARGE', 503)); } else output.push(chunk); });
     child.on('error', () => { clearTimeout(timer); reject(new BrokerError('ADAPTER_UNAVAILABLE', 503)); });
     child.on('close', code => { clearTimeout(timer); if (code !== 0) { reject(new BrokerError('ADAPTER_REJECTED', 502)); return; } try { const result = JSON.parse(Buffer.concat(output).toString('utf8')); if (result.ok !== true) throw new Error(); resolve(result); } catch { reject(new BrokerError('ADAPTER_INVALID', 502)); } });
@@ -202,17 +238,23 @@ function executableAdapter(command, { timeoutMs = LIMITS.adapterTimeoutMs } = {}
 
 export function createProductionAdapters({ verifierCommand, artifactFetcherCommand, deployerCommand } = {}) {
   if (![verifierCommand, artifactFetcherCommand, deployerCommand].every(value => typeof value === 'string' && path.isAbsolute(value))) throw new BrokerError('ADAPTERS_NOT_CONFIGURED', 503);
-  return { candidateVerifier: executableAdapter(verifierCommand), artifactFetcher: executableAdapter(artifactFetcherCommand), deployer: executableAdapter(deployerCommand) };
+  return {
+    candidateVerifier: executableAdapter(verifierCommand),
+    artifactFetcher: executableAdapter(artifactFetcherCommand),
+    deployer: executableAdapter(deployerCommand, { timeoutMs: 15 * 60_000 }),
+  };
 }
 
-export function checkRootOwnedPath(filePath, { executable = false } = {}) {
-  return fs.stat(filePath).then(stat => stat.uid === 0 && (stat.mode & 0o022) === 0 && (!executable || (stat.mode & 0o111) !== 0)).catch(() => false);
+export function checkRootOwnedPath(filePath, { executable = false, privateFile = false } = {}) {
+  return fs.stat(filePath).then(stat => stat.uid === 0 &&
+    (stat.mode & (privateFile ? 0o077 : 0o022)) === 0 &&
+    (!executable || (stat.mode & 0o111) !== 0)).catch(() => false);
 }
 
 export async function productionReadiness({ tlsCert, tlsKey, caPem, stateDir, credentialFile, verifierCommand, artifactFetcherCommand, deployerCommand }) {
   const checks = await Promise.all([
-    checkRootOwnedPath(tlsCert), checkRootOwnedPath(tlsKey), checkRootOwnedPath(caPem),
-    checkRootOwnedPath(credentialFile), checkRootOwnedPath(verifierCommand, { executable: true }),
+    checkRootOwnedPath(tlsCert), checkRootOwnedPath(tlsKey, { privateFile: true }), checkRootOwnedPath(caPem),
+    checkRootOwnedPath(credentialFile, { privateFile: true }), checkRootOwnedPath(verifierCommand, { executable: true }),
     checkRootOwnedPath(artifactFetcherCommand, { executable: true }), checkRootOwnedPath(deployerCommand, { executable: true }),
     fs.stat(stateDir).then(stat => stat.uid === 0 && (stat.mode & 0o077) === 0).catch(() => false),
   ]);
@@ -226,7 +268,9 @@ export function createBroker({ journal, jwks, candidateVerifier, artifactFetcher
     try {
       if (req.method !== 'POST' || req.url !== '/v1/staging/releases') throw new BrokerError('NOT_FOUND', 404);
       if (req.headers['content-type'] !== 'application/json') throw new BrokerError('CONTENT_TYPE_REQUIRED', 415);
-      const length = Number(req.headers['content-length']);
+      const rawLength = req.headers['content-length'];
+      if (typeof rawLength !== 'string' || !/^[1-9][0-9]{0,5}$/.test(rawLength)) throw new BrokerError('BODY_LIMIT', 413);
+      const length = Number(rawLength);
       if (!Number.isSafeInteger(length) || length < 2 || length > LIMITS.bodyBytes) throw new BrokerError('BODY_LIMIT', 413);
       const chunks = []; let size = 0;
       for await (const chunk of req) { size += chunk.length; if (size > LIMITS.bodyBytes) throw new BrokerError('BODY_LIMIT', 413); chunks.push(chunk); }
@@ -236,10 +280,10 @@ export function createBroker({ journal, jwks, candidateVerifier, artifactFetcher
       if (typeof auth !== 'string' || !/^Bearer [^\s]+$/.test(auth)) throw new BrokerError('OIDC_REQUIRED', 401);
       await verifyOidcToken(auth.slice(7), body, { jwks });
       if (!(await readiness())) throw new BrokerError('BROKER_NOT_READY', 503);
-      if (!(await candidateVerifier(body.candidate, body.producer))) throw new BrokerError('CANDIDATE_NOT_VERIFIED', 403);
+      if (!(await candidateVerifier(body))) throw new BrokerError('CANDIDATE_NOT_VERIFIED', 403);
       await journal.reserve(body.request_id, { commit: body.candidate.source_commit, artifact_id: body.candidate.artifact_id });
       try {
-        const artifact = await artifactFetcher(body.candidate, body.producer);
+        const artifact = await artifactFetcher(body);
         await deployer({ ...body, artifact });
         await journal.finish(body.request_id, 'completed');
       } catch (error) {
@@ -259,7 +303,7 @@ export async function createProductionServer({ env = process.env } = {}) {
     tlsKey: env.CNYOS_BROKER_TLS_KEY || '/etc/cnyos-broker/tls/server.key',
     caPem: env.CNYOS_BROKER_CA_PEM || '/etc/cnyos-broker/ca.pem',
     stateDir: env.CNYOS_BROKER_STATE_DIR || '/var/lib/cnyos-broker',
-    credentialFile: env.CNYOS_BROKER_CREDENTIAL_FILE || '/etc/cnyos-broker/github-app-credentials.json',
+    credentialFile: env.CNYOS_BROKER_CREDENTIAL_FILE || '/etc/cnyos-broker/github-token',
     verifierCommand: env.CNYOS_BROKER_CANDIDATE_VERIFIER || '/usr/local/libexec/cnyos-staging-candidate-verifier',
     artifactFetcherCommand: env.CNYOS_BROKER_ARTIFACT_FETCHER || '/usr/local/libexec/cnyos-staging-artifact-fetcher',
     deployerCommand: env.CNYOS_BROKER_DEPLOYER || '/usr/local/libexec/cnyos-staging-deployer',
