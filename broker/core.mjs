@@ -256,12 +256,13 @@ async function checkWorkflowShaPin(filePath) {
   try { const value = (await fs.readFile(filePath, 'utf8')).trim(); return /^[0-9a-f]{40}$/.test(value); } catch { return false; }
 }
 
-export async function productionReadiness({ tlsCert, tlsKey, caPem, stateDir, credentialFile, controllerWorkflowShaFile, verifierCommand, artifactFetcherCommand, deployerCommand }) {
+export async function productionReadiness({ tlsCert, tlsKey, caPem, stateDir, credentialFile, controllerWorkflowShaFile, verifierCommand, artifactFetcherCommand, deployerCommand, trustedModuleFiles = [] }) {
   const checks = await Promise.all([
     checkRootOwnedPath(tlsCert), checkRootOwnedPath(tlsKey, { privateFile: true }), checkRootOwnedPath(caPem),
     checkRootOwnedPath(credentialFile, { privateFile: true }), checkWorkflowShaPin(controllerWorkflowShaFile), checkRootOwnedPath(verifierCommand, { executable: true }),
     checkRootOwnedPath(artifactFetcherCommand, { executable: true }), checkRootOwnedPath(deployerCommand, { executable: true }),
     fs.stat(stateDir).then(stat => stat.uid === 0 && (stat.mode & 0o077) === 0).catch(() => false),
+    ...trustedModuleFiles.map(filePath => checkRootOwnedPath(filePath)),
   ]);
   return checks.every(Boolean);
 }
@@ -313,6 +314,10 @@ export async function createProductionServer({ env = process.env } = {}) {
     verifierCommand: env.CNYOS_BROKER_CANDIDATE_VERIFIER || '/usr/local/libexec/cnyos-staging-candidate-verifier',
     artifactFetcherCommand: env.CNYOS_BROKER_ARTIFACT_FETCHER || '/usr/local/libexec/cnyos-staging-artifact-fetcher',
     deployerCommand: env.CNYOS_BROKER_DEPLOYER || '/usr/local/libexec/cnyos-staging-deployer',
+    trustedModuleFiles: [
+      '/opt/cnyos-staging-controller/broker/adapters/common.mjs',
+      '/opt/cnyos-staging-controller/broker/adapters/deployer-lib.mjs',
+    ],
   };
   const ready = () => productionReadiness(config);
   const adapters = createProductionAdapters(config);
