@@ -26,6 +26,7 @@ The systemd template uses these paths:
 /etc/cnyos-broker/tls/server.key       root:root, not group/world writable
 /etc/cnyos-broker/ca.pem               root:root, not group/world writable
 /etc/cnyos-broker/github-token        root:root, mode 0600; never printed
+/etc/cnyos-broker/supabase-anon-key   root:root, mode 0600; staging anon key used only for loopback health
 /etc/cnyos-broker/controller-workflow-sha
                                       root:root, mode 0600; exact reviewed 40-character commit SHA
 /var/lib/cnyos-broker                  root:root, mode 0700

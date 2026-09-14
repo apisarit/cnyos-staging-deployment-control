@@ -35,10 +35,10 @@ async function atomicJson(file, value) {
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-function health(port, route, expected, timeout = 10_000) {
+function health(port, route, expected, timeout = 10_000, headers = {}) {
   return new Promise((resolve, reject) => {
     const code = port === 18080 ? 'WEB_HEALTH_FAILED' : 'SUPABASE_HEALTH_FAILED';
-    const req = http.get({ hostname: '127.0.0.1', port, path: route, timeout }, response => {
+    const req = http.get({ hostname: '127.0.0.1', port, path: route, timeout, headers }, response => {
       const chunks = [];
       response.on('data', chunk => chunks.push(chunk));
       response.on('end', () => {
@@ -50,6 +50,17 @@ function health(port, route, expected, timeout = 10_000) {
     req.on('timeout', () => req.destroy(new AdapterError('HEALTH_TIMEOUT')));
     req.on('error', () => reject(new AdapterError(code)));
   });
+}
+
+async function authenticatedSupabaseHealth(file = process.env.CNYOS_SUPABASE_ANON_KEY_FILE || '/etc/cnyos-broker/supabase-anon-key') {
+  if (!path.isAbsolute(file)) throw new AdapterError('SUPABASE_HEALTH_KEY_PATH_INVALID');
+  const stat = await fs.lstat(file).catch(() => null);
+  if (!stat?.isFile() || stat.isSymbolicLink() || stat.uid !== 0 || (stat.mode & 0o077) !== 0 || stat.size < 20 || stat.size > 4096) {
+    throw new AdapterError('SUPABASE_HEALTH_KEY_UNAVAILABLE');
+  }
+  const key = (await fs.readFile(file, 'utf8')).trim();
+  if (!/^[A-Za-z0-9_.-]{20,4096}$/.test(key)) throw new AdapterError('SUPABASE_HEALTH_KEY_INVALID');
+  return health(18000, '/auth/v1/health', null, 10_000, { apikey: key });
 }
 
 function run(file, args, cwd, { spawnImpl = spawn, timeoutMs = 10 * 60_000, env = process.env } = {}) {
@@ -161,7 +172,7 @@ async function deployStagingInner(body, {
   runtimeDir = new URL('../runtime/', import.meta.url),
   spawnImpl = spawn,
   webHealth = () => health(18080, '/healthz', 'ok\n'),
-  supabaseHealth = () => health(18000, '/auth/v1/health', null),
+  supabaseHealth = () => authenticatedSupabaseHealth(),
   receiptWriter = atomicJson,
   requireRoot = true,
 } = {}) {
