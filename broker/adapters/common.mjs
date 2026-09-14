@@ -175,7 +175,7 @@ function crc32(data) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 const u16 = (b, p) => b.readUInt16LE(p); const u32 = (b, p) => b.readUInt32LE(p);
-function safeName(name) { return typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(name) && name !== '.' && name !== '..'; }
+function safeName(name) { return typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._-]{0,199}$/.test(name) && name !== '.' && name !== '..'; }
 
 export function readZipExact(buffer, expected) {
   if (!Buffer.isBuffer(buffer) || buffer.length > MAX_ARCHIVE_BYTES) throw new AdapterError('ZIP_INVALID');

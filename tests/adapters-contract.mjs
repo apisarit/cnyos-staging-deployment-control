@@ -36,7 +36,7 @@ const files = new Map([[archiveName, archive], ['release-request.json', release]
 assert.deepEqual([...readZipExact(zip(files), [archiveName, 'release-request.json', 'SHA256SUMS']).keys()], [...files.keys()]);
 assert.throws(() => readZipExact(zip([...files, ['extra', Buffer.from('x')]]), [archiveName, 'release-request.json', 'SHA256SUMS']), /ZIP_STRUCTURE_INVALID|ZIP_FILESET_INVALID/);
 assert.throws(() => readZipExact(zip([['../evil', Buffer.from('x')]]), ['../evil']), /ZIP_ENTRY_UNSAFE/);
-assert.deepEqual([...extractTarGzip(zlib.gzipSync(tar([['index.html', Buffer.from('ok')], ['runtime-publish-manifest.json', Buffer.from('{}')]]))).keys()], ['index.html', 'runtime-publish-manifest.json']);
+assert.deepEqual([...extractTarGzip(zlib.gzipSync(tar([['_headers', Buffer.from('ok')], ['index.html', Buffer.from('ok')], ['runtime-publish-manifest.json', Buffer.from('{}')]]))).keys()], ['_headers', 'index.html', 'runtime-publish-manifest.json']);
 assert.doesNotThrow(() => validateReleaseRequest(files, candidate, producer));
 assert.throws(() => validateReleaseRequest(new Map([...files, ['SHA256SUMS', Buffer.from(`${'0'.repeat(64)}  ${archiveName}\n${sha256(release)}  release-request.json\n`)]]), candidate, producer), /RELEASE_DIGEST_MISMATCH/);
 
@@ -56,23 +56,26 @@ const deploySpoolRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cnyos-deployer-
 const deploySpool = await fs.mkdtemp(path.join(deploySpoolRoot, 'candidate-'));
 const tree = 'f'.repeat(40);
 const indexBytes = Buffer.from('<!doctype html><title>CNYOS staging</title>');
+const headersBytes = Buffer.from('/healthz\n  Cache-Control: no-store\n');
 const deployManifestBytes = Buffer.from(JSON.stringify({
   source: { commit, tree, verified: true },
   build: { context: 'production', deploymentClass: 'dedicated-staging' },
   safety: { previewLocked: false, databaseLocked: false, stagingDatabaseExplicitlyAcknowledged: true },
 }));
-const runtimeFiles = ['index.html', 'deploy-manifest.json'];
+const runtimeFiles = ['_headers', 'index.html', 'deploy-manifest.json'];
 const runtimeManifestBytes = Buffer.from(JSON.stringify({
   schemaVersion: 2,
   integrityAlgorithm: 'sha256',
   fileCount: runtimeFiles.length,
   files: runtimeFiles,
   integrity: [
+    { path: '_headers', size: headersBytes.length, sha256: sha256(headersBytes) },
     { path: 'index.html', size: indexBytes.length, sha256: sha256(indexBytes) },
     { path: 'deploy-manifest.json', size: deployManifestBytes.length, sha256: sha256(deployManifestBytes) },
   ],
 }));
 const staticArchive = zlib.gzipSync(tar([
+  ['_headers', headersBytes],
   ['index.html', indexBytes],
   ['deploy-manifest.json', deployManifestBytes],
   ['runtime-publish-manifest.json', runtimeManifestBytes],
