@@ -20,6 +20,7 @@ const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
 const CONTROLLER_REPOSITORY_ID = 1362863285;
 const CONTROLLER_ACTOR = 'apisarit';
 const CONTROLLER_ACTOR_ID = 216305243;
+const CONTROLLER_IMMUTABLE_SUBJECT = 'repo:apisarit@216305243/cnyos-staging-deployment-control@1362863285:environment:staging';
 const CONTROLLER_REF = 'refs/heads/main';
 const CONTROLLER_WORKFLOW = 'Admit VPS staging release';
 const CONTROLLER_WORKFLOW_FILE = 'admit-vps-staging-release.yml';
@@ -104,7 +105,7 @@ export function expectedOidcClaims(body) {
   return {
     iss: ISSUER,
     aud: AUDIENCE,
-    sub: `repo:${CONTROLLER_REPOSITORY}:environment:staging`,
+    sub: CONTROLLER_IMMUTABLE_SUBJECT,
     repository: CONTROLLER_REPOSITORY,
     repository_id: String(CONTROLLER_REPOSITORY_ID),
     repository_visibility: 'private',
