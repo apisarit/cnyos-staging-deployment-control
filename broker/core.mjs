@@ -270,7 +270,13 @@ export async function productionReadiness({ tlsCert, tlsKey, caPem, stateDir, cr
 export function createBroker({ journal, jwks, candidateVerifier, artifactFetcher, deployer, readiness = async () => true }) {
   if (!journal || typeof candidateVerifier !== 'function' || typeof artifactFetcher !== 'function' || typeof deployer !== 'function') throw new BrokerError('BROKER_NOT_CONFIGURED', 503);
   async function handle(req, res) {
-    const fail = (error) => { const status = error instanceof BrokerError ? error.status : 503; res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify({ error: error instanceof BrokerError ? error.code : 'BROKER_UNAVAILABLE' })); };
+    const fail = (error) => {
+      const status = error instanceof BrokerError ? error.status : 503;
+      const code = error instanceof BrokerError ? error.code : 'BROKER_UNAVAILABLE';
+      console.error(JSON.stringify({ event: 'broker_request_rejected', code, status }));
+      res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ error: code }));
+    };
     try {
       if (req.method !== 'POST' || req.url !== '/v1/staging/releases') throw new BrokerError('NOT_FOUND', 404);
       if (req.headers['content-type'] !== 'application/json') throw new BrokerError('CONTENT_TYPE_REQUIRED', 415);
