@@ -30,6 +30,10 @@ The systemd template uses these paths:
 /usr/local/libexec/cnyos-staging-deployer
 ```
 
+The unit deliberately pins the Node.js runtime already installed on the CNYOS
+VPS at `/opt/cnyos-validation/node-v24.20.0-linux-x64/bin/node`. Replacing or
+upgrading that runtime requires a separately reviewed controller change.
+
 The executable adapters receive the validated JSON on stdin and must return
 exactly JSON containing `{"ok":true}`. Their stderr is discarded and their
 stdout is size-limited. They must implement their own artifact digest and
