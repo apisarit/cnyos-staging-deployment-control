@@ -4,9 +4,15 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import { AdapterError, ARTIFACT_NAME, createGitHubClient, extractTarGzip, readZipExact, validateReleaseRequest, verifyCandidate, sha256 } from '../broker/adapters/common.mjs';
 import { deployStaging } from '../broker/adapters/deployer-lib.mjs';
+
+const deployerEntrypoint = spawnSync(process.execPath, [fileURLToPath(new URL('../broker/adapters/deployer.mjs', import.meta.url))], { input: '' });
+assert.equal(deployerEntrypoint.status, 1);
+assert.match(deployerEntrypoint.stderr.toString(), /^DEPLOYER_FAILED\n$/);
 
 function crc32(data) { let crc = 0xffffffff; for (const byte of data) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0); } return (crc ^ 0xffffffff) >>> 0; }
 function zip(files) {
