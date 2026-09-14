@@ -73,6 +73,7 @@ assert.doesNotMatch(executableLines, /echo\s+.*(?:oidc_response|oidc_token|ACTIO
   'OIDC material must never be printed');
 assert.match(workflow, /only component allowed to download, verify, and invoke the VPS deployer/);
 assert.match(service, /CNYOS_BROKER_CANDIDATE_VERIFIER=\/opt\/cnyos-staging-controller\/broker\/adapters\/candidate-verifier\.mjs/);
+assert.match(service, /Environment=PATH=\/opt\/cnyos-validation\/node-v24\.20\.0-linux-x64\/bin:/);
 assert.match(service, /CNYOS_BROKER_ARTIFACT_FETCHER=\/opt\/cnyos-staging-controller\/broker\/adapters\/artifact-fetcher\.mjs/);
 assert.match(service, /CNYOS_BROKER_DEPLOYER=\/opt\/cnyos-staging-controller\/broker\/adapters\/deployer\.mjs/);
 
