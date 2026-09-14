@@ -27,6 +27,16 @@ export const sha256 = value => crypto.createHash('sha256').update(value).digest(
 const safeSha = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 const safeCommit = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
 
+export async function readRootOnlyWorkflowPin(filePath = process.env.CNYOS_CONTROLLER_WORKFLOW_SHA_FILE || '/etc/cnyos-broker/controller-workflow-sha') {
+  if (!path.isAbsolute(filePath)) throw new AdapterError('CONTROLLER_WORKFLOW_PIN_PATH_INVALID');
+  let stat;
+  try { stat = await fs.stat(filePath); } catch { throw new AdapterError('CONTROLLER_WORKFLOW_PIN_UNAVAILABLE'); }
+  if (stat.uid !== 0 || (stat.mode & 0o077) !== 0 || !stat.isFile() || stat.size !== 41) throw new AdapterError('CONTROLLER_WORKFLOW_PIN_PERMISSIONS_INVALID');
+  const pin = (await fs.readFile(filePath, 'utf8')).trim();
+  if (!safeCommit(pin)) throw new AdapterError('CONTROLLER_WORKFLOW_PIN_INVALID');
+  return pin;
+}
+
 export async function readRootOnlyToken(filePath = process.env.CNYOS_GITHUB_TOKEN_FILE || '/etc/cnyos-broker/github-token') {
   if (!path.isAbsolute(filePath)) throw new AdapterError('GITHUB_TOKEN_PATH_INVALID');
   let stat;
@@ -113,7 +123,7 @@ export function createGitHubClient({ token, requestImpl = request, downloadImpl 
 function exact(value, expected, code) { if (value !== expected) throw new AdapterError(code); }
 function positive(value, code) { if (!Number.isSafeInteger(value) || value < 1) throw new AdapterError(code); }
 
-export async function verifyCandidate(body, client) {
+export async function verifyCandidate(body, client, { workflowShaPin } = {}) {
   if (!body || !body.controller || !body.producer || !body.candidate) throw new AdapterError('CANDIDATE_BODY_INVALID');
   const { controller: c, producer: p, candidate: a } = body;
   exact(body.environment, 'staging', 'CANDIDATE_ENVIRONMENT_INVALID');
@@ -132,17 +142,16 @@ export async function verifyCandidate(body, client) {
   exact(c.actor_id, CONTROLLER_ACTOR_ID, 'CONTROLLER_ACTOR_ID_INVALID');
   exact(c.triggering_actor, CONTROLLER_ACTOR, 'CONTROLLER_TRIGGERING_ACTOR_INVALID');
   positive(c.run_id, 'CONTROLLER_RUN_INVALID'); positive(c.run_attempt, 'CONTROLLER_ATTEMPT_INVALID');
+  if (!safeCommit(workflowShaPin) || c.workflow_sha !== workflowShaPin) throw new AdapterError('CONTROLLER_WORKFLOW_PIN_MISMATCH');
   const [repo, branch, protection, controllerRun, producerRepo, producerRun, artifact] = await Promise.all([
-    client.repo(CONTROLLER_REPOSITORY), client.branch(CONTROLLER_REPOSITORY, 'main'), client.protection(CONTROLLER_REPOSITORY, 'main'),
+    client.repo(CONTROLLER_REPOSITORY), client.branch(CONTROLLER_REPOSITORY, 'main').catch(() => null), client.protection(CONTROLLER_REPOSITORY, 'main').catch(() => null),
     client.run(CONTROLLER_REPOSITORY, c.run_id), client.repo(PRODUCER_REPOSITORY), client.run(PRODUCER_REPOSITORY, a.producer_run_id), client.artifact(PRODUCER_REPOSITORY, a.artifact_id)
   ]);
   exact(repo.full_name, CONTROLLER_REPOSITORY, 'CONTROLLER_REPOSITORY_MISMATCH');
   if (repo.private !== true || repo.id !== CONTROLLER_REPOSITORY_ID || repo.default_branch !== 'main') throw new AdapterError('CONTROLLER_REPOSITORY_TRUST_INVALID');
-  const review = protection.required_pull_request_reviews;
-  if (branch.protected !== true || !review || review.required_approving_review_count < 1 ||
-      review.dismiss_stale_reviews !== true || protection.enforce_admins?.enabled !== true ||
-      protection.required_status_checks == null || protection.allow_force_pushes?.enabled === true ||
-      protection.allow_deletions?.enabled === true) throw new AdapterError('CONTROLLER_PROTECTION_INVALID');
+  // GitHub's branch/protection responses are advisory only: a private-repository
+  // plan may return 403 even when the repository is valid. The root-owned pin
+  // above is the server-side trust anchor and is never replaced by this API.
   exact(controllerRun.id, c.run_id, 'CONTROLLER_RUN_ID_MISMATCH'); exact(controllerRun.head_sha, c.workflow_sha, 'CONTROLLER_WORKFLOW_SHA_MISMATCH');
   exact(controllerRun.path, `.github/workflows/${CONTROLLER_WORKFLOW_FILE}`, 'CONTROLLER_WORKFLOW_PATH_MISMATCH');
   if (controllerRun.head_branch !== 'main' || controllerRun.event !== 'workflow_dispatch' ||
@@ -156,7 +165,7 @@ export async function verifyCandidate(body, client) {
   if (producerRun.status !== 'completed' || producerRun.conclusion !== 'success') throw new AdapterError('PRODUCER_RUN_NOT_SUCCESSFUL');
   exact(artifact.id, a.artifact_id, 'ARTIFACT_ID_MISMATCH'); exact(artifact.name, ARTIFACT_NAME(a.source_commit, a.producer_run_id), 'ARTIFACT_NAME_MISMATCH');
   if (artifact.expired === true || artifact.workflow_run?.id !== a.producer_run_id || artifact.size_in_bytes < 1) throw new AdapterError('ARTIFACT_METADATA_INVALID');
-  return { ok: true, controllerRun: controllerRun.id, producerRun: producerRun.id, artifactId: artifact.id };
+  return { ok: true, controllerRun: controllerRun.id, producerRun: producerRun.id, artifactId: artifact.id, branchProtectionObserved: branch?.protected === true && protection != null };
 }
 
 function crc32(data) {

@@ -251,10 +251,15 @@ export function checkRootOwnedPath(filePath, { executable = false, privateFile =
     (!executable || (stat.mode & 0o111) !== 0)).catch(() => false);
 }
 
-export async function productionReadiness({ tlsCert, tlsKey, caPem, stateDir, credentialFile, verifierCommand, artifactFetcherCommand, deployerCommand }) {
+async function checkWorkflowShaPin(filePath) {
+  if (!(await checkRootOwnedPath(filePath, { privateFile: true }))) return false;
+  try { const value = (await fs.readFile(filePath, 'utf8')).trim(); return /^[0-9a-f]{40}$/.test(value); } catch { return false; }
+}
+
+export async function productionReadiness({ tlsCert, tlsKey, caPem, stateDir, credentialFile, controllerWorkflowShaFile, verifierCommand, artifactFetcherCommand, deployerCommand }) {
   const checks = await Promise.all([
     checkRootOwnedPath(tlsCert), checkRootOwnedPath(tlsKey, { privateFile: true }), checkRootOwnedPath(caPem),
-    checkRootOwnedPath(credentialFile, { privateFile: true }), checkRootOwnedPath(verifierCommand, { executable: true }),
+    checkRootOwnedPath(credentialFile, { privateFile: true }), checkWorkflowShaPin(controllerWorkflowShaFile), checkRootOwnedPath(verifierCommand, { executable: true }),
     checkRootOwnedPath(artifactFetcherCommand, { executable: true }), checkRootOwnedPath(deployerCommand, { executable: true }),
     fs.stat(stateDir).then(stat => stat.uid === 0 && (stat.mode & 0o077) === 0).catch(() => false),
   ]);
@@ -304,6 +309,7 @@ export async function createProductionServer({ env = process.env } = {}) {
     caPem: env.CNYOS_BROKER_CA_PEM || '/etc/cnyos-broker/ca.pem',
     stateDir: env.CNYOS_BROKER_STATE_DIR || '/var/lib/cnyos-broker',
     credentialFile: env.CNYOS_BROKER_CREDENTIAL_FILE || '/etc/cnyos-broker/github-token',
+    controllerWorkflowShaFile: env.CNYOS_CONTROLLER_WORKFLOW_SHA_FILE || '/etc/cnyos-broker/controller-workflow-sha',
     verifierCommand: env.CNYOS_BROKER_CANDIDATE_VERIFIER || '/usr/local/libexec/cnyos-staging-candidate-verifier',
     artifactFetcherCommand: env.CNYOS_BROKER_ARTIFACT_FETCHER || '/usr/local/libexec/cnyos-staging-artifact-fetcher',
     deployerCommand: env.CNYOS_BROKER_DEPLOYER || '/usr/local/libexec/cnyos-staging-deployer',

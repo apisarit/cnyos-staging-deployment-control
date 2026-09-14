@@ -8,6 +8,8 @@ Type=simple
 User=root
 Group=root
 WorkingDirectory=/opt/cnyos-staging-controller/broker
+Environment=CNYOS_CONTROLLER_WORKFLOW_SHA_FILE=/etc/cnyos-broker/controller-workflow-sha
+Environment=CNYOS_GITHUB_TOKEN_FILE=/etc/cnyos-broker/github-token
 ExecStart=/opt/cnyos-validation/node-v24.20.0-linux-x64/bin/node /opt/cnyos-staging-controller/broker/server.mjs
 Restart=on-failure
 RestartSec=5s

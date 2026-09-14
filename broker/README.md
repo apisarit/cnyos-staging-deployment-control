@@ -3,8 +3,10 @@
 This package is a deliberately inert, dependency-free admission broker. It
 binds only to `127.0.0.1:9443` with TLS 1.3 and accepts one exact POST route.
 It verifies a GitHub Actions RS256 OIDC token against the pinned GitHub issuer,
-audience, workflow, protected `main` ref, self-hosted runner, run identity, and
-staging environment. It then verifies the producer candidate through an
+audience, workflow, `main` ref, self-hosted runner, run identity, and staging
+environment. The controller workflow SHA must also match the root-owned
+server-side pin file; GitHub branch protection responses are advisory because
+private-repository plan limits may prevent enforcement. It then verifies the producer candidate through an
 injected root-owned adapter, reserves a request in an append-only journal, and
 invokes separate artifact/deployer adapters. A failed adapter is permanently
 recorded as failed, so the same request cannot be replayed.
@@ -24,6 +26,8 @@ The systemd template uses these paths:
 /etc/cnyos-broker/tls/server.key       root:root, not group/world writable
 /etc/cnyos-broker/ca.pem               root:root, not group/world writable
 /etc/cnyos-broker/github-token        root:root, mode 0600; never printed
+/etc/cnyos-broker/controller-workflow-sha
+                                      root:root, mode 0600; exact reviewed 40-character commit SHA
 /var/lib/cnyos-broker                  root:root, mode 0700
 /usr/local/libexec/cnyos-staging-candidate-verifier
 /usr/local/libexec/cnyos-staging-artifact-fetcher
@@ -44,10 +48,12 @@ security approval.
 
 The reference adapters in `broker/adapters/` are fail-closed and are intended
 to be installed by a root-owned VPS service account. The candidate verifier
-accepts the complete admission body, not an untrusted subset. It checks the
-private controller repository, protected `main` branch and required review
-protection through the GitHub API, then binds the exact controller run and
-workflow SHA. It separately checks that the public producer repository's
+accepts the complete admission body, not an untrusted subset. It requires the
+exact SHA in the root-owned `/etc/cnyos-broker/controller-workflow-sha` pin
+file and binds the controller run's `head_sha` to that pin. It checks the
+private controller repository and queries `main` branch protection through the
+GitHub API as advisory evidence; a plan-limited API response is not treated as
+enforcement. It separately checks that the public producer repository's
 `deploy-vps-staging.yml` run completed successfully at the requested commit.
 The GitHub token is read only from `CNYOS_GITHUB_TOKEN_FILE`; that file must be
 root-owned and mode 0600 (or stricter), and is never printed.
@@ -89,7 +95,20 @@ install -o root -g root -m 0755 broker/adapters/deployer.mjs /usr/local/libexec/
 install -d -o root -g root -m 0700 /var/lib/cnyos-broker/spool
 ```
 
-The VPS must provide a root-owned token file, CA/TLS files, and the systemd
-unit's readiness checks before `/readyz` can become healthy. Contract tests use
+The VPS must provide a root-owned token file, CA/TLS files, and the exact
+reviewed controller workflow pin before the systemd unit's readiness checks
+can make `/readyz` healthy. Contract tests use
 fixtures and mocked GitHub responses only; passing them is not live staging
 evidence or a release authorization.
+
+After installing this exact controller commit, update the pin atomically and
+restart the broker. Never use a branch name or an unreviewed SHA:
+
+```bash
+install -o root -g root -m 0600 /path/to/reviewed/controller-workflow-sha /etc/cnyos-broker/controller-workflow-sha
+systemctl restart cnyos-staging-broker.service
+curl --fail --silent --show-error --cacert /etc/cnyos-broker/ca.pem https://127.0.0.1:9443/readyz
+```
+
+The pin is an independent server-side trust anchor; it does not create a
+human security approval and does not make Production eligible.
