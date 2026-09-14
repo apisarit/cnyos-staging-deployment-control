@@ -88,7 +88,7 @@ function download(url, { token, maxBytes = MAX_ARCHIVE_BYTES } = {}) {
         parsed.hostname === 'release-assets.githubusercontent.com' || parsed.hostname.endsWith('.blob.core.windows.net');
       if (parsed.protocol !== 'https:' || !allowed || redirects > 3) { reject(new AdapterError('ARTIFACT_REDIRECT_UNSAFE')); return; }
       const req = https.get({ hostname: parsed.hostname, port: parsed.port || 443, path: `${parsed.pathname}${parsed.search}`, servername: parsed.hostname,
-        headers: { accept: 'application/zip', 'user-agent': 'cnyos-staging-broker', ...(authAllowed && token ? { authorization: `Bearer ${token}` } : {}) }, timeout: 20_000 }, response => {
+        headers: { accept: authAllowed ? 'application/vnd.github+json' : 'application/zip', 'user-agent': 'cnyos-staging-broker', ...(authAllowed && token ? { authorization: `Bearer ${token}` } : {}) }, timeout: 20_000 }, response => {
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           response.resume();
           const next = new URL(response.headers.location, parsed);
