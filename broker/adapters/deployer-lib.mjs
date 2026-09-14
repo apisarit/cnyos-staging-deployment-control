@@ -221,6 +221,10 @@ async function deployStagingInner(body, {
   const manifests = validateManifest(distFiles, request, candidate.source_commit);
 
   const currentLink = path.join(rootDir, 'current');
+  const dockerConfigDir = path.resolve(spoolRoot, '..', 'docker-config');
+  await fs.mkdir(dockerConfigDir, { recursive: true, mode: 0o700 });
+  await fs.chmod(dockerConfigDir, 0o700);
+  const dockerEnv = { ...process.env, CNYOS_SOURCE_COMMIT: candidate.source_commit, DOCKER_CONFIG: dockerConfigDir };
   const interrupted = await findInterruptedReceipt(receiptsDir);
   if (interrupted) {
     if (!COMMIT.test(interrupted.value.source_commit)) throw new AdapterError('INTERRUPTED_RELEASE_INVALID');
@@ -231,9 +235,9 @@ async function deployStagingInner(body, {
     if (previousRelease !== null && (typeof previousRelease !== 'string' ||
         path.relative(releasesDir, previousRelease).startsWith('..'))) throw new AdapterError('INTERRUPTED_PREVIOUS_RELEASE_INVALID');
     if (previousRelease) {
-      await run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(previousRelease, '.env'), '--file', path.join(previousRelease, 'docker-compose.yml'), 'up', '-d', '--no-build', '--remove-orphans', '--wait', '--wait-timeout', '120'], previousRelease, { spawnImpl });
+      await run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(previousRelease, '.env'), '--file', path.join(previousRelease, 'docker-compose.yml'), 'up', '-d', '--no-build', '--remove-orphans', '--wait', '--wait-timeout', '120'], previousRelease, { spawnImpl, env: dockerEnv });
     } else {
-      await run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(interruptedRelease, '.env'), '--file', path.join(interruptedRelease, 'docker-compose.yml'), 'down', '--remove-orphans'], interruptedRelease, { spawnImpl });
+      await run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(interruptedRelease, '.env'), '--file', path.join(interruptedRelease, 'docker-compose.yml'), 'down', '--remove-orphans'], interruptedRelease, { spawnImpl, env: dockerEnv });
     }
     await replaceCurrent(currentLink, previousRelease, requestId);
     const recoveredDir = path.join(failedRoot, `${interrupted.value.source_commit}-interrupted-${requestId}`);
@@ -261,7 +265,6 @@ async function deployStagingInner(body, {
   });
 
   const compose = path.join(releaseDir, 'docker-compose.yml');
-  const dockerEnv = { ...process.env, CNYOS_SOURCE_COMMIT: candidate.source_commit };
   const docker = args => run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(releaseDir, '.env'), '--file', compose, ...args], releaseDir, { spawnImpl, env: dockerEnv });
   let rollbackSucceeded = false;
   try {
@@ -281,7 +284,7 @@ async function deployStagingInner(body, {
   } catch (error) {
     try {
       if (previous) {
-        await run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(previous, '.env'), '--file', path.join(previous, 'docker-compose.yml'), 'up', '-d', '--no-build', '--remove-orphans', '--wait', '--wait-timeout', '120'], previous, { spawnImpl });
+        await run('docker', ['compose', '--project-name', 'cnyos-web-staging', '--env-file', path.join(previous, '.env'), '--file', path.join(previous, 'docker-compose.yml'), 'up', '-d', '--no-build', '--remove-orphans', '--wait', '--wait-timeout', '120'], previous, { spawnImpl, env: dockerEnv });
       } else {
         await docker(['down', '--remove-orphans']);
       }
