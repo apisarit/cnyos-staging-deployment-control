@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Admin Task Center</title>
+  <link rel="stylesheet" href="app.css?v=account-access1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-ia1"></script>
+  <script src="chananya-runtime.js?v=account-access1"></script>
+  <script src="app-shell.js?v=clinical-os-ia1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-department1"></script>
+  <script defer src="admin.js?v=account-access1"></script>
+  <script defer src="admin-clinical-audit.js?v=clinical-os-ia1"></script>
+</head>
+<body data-page="admin">
+<div id="boot"><div><div class="spinner"></div><h2>กำลังเปิด Admin Task Center</h2><p id="boot-error">กำลังตรวจสอบ session และสิทธิ์</p></div></div>
+<div id="app" class="app-frame hidden">
+<aside class="sidebar" aria-label="เมนูระบบ"><a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span></a><nav class="global-nav" id="global-nav"></nav><div class="sidebar-foot">Governance and audit<br>Role boundaries remain explicit</div></aside>
+<button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+<div class="workspace">
+<header class="top">
+  <div class="actions"><button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button><div class="top-title"><span class="page-kicker">Governance</span><h1>ศูนย์ควบคุมและ Audit</h1></div></div>
+  <div class="actions">
+    <div class="identity-block"><small id="identity"></small></div>
+    <span class="badge" id="role">viewer</span>
+    <button class="btn ghost" id="logout">ออกจากระบบ</button>
+  </div>
+</header>
+<nav class="nav" id="admin-nav">
+  <button class="active" data-view="tasks">Admin Tasks</button>
+  <button data-view="users">Users & Roles</button>
+  <button data-view="history">Approval History</button>
+  <button data-view="clinical-audit">Clinical Audit</button>
+</nav>
+<main>
+<section class="view active" id="tasks">
+  <div class="hero"><h2>งานรออนุมัติและข้อยกเว้น</h2><p>คิวกลางสำหรับ User Access, Pharmacy, Production, Inventory และ Billing</p></div>
+  <div class="stats">
+    <div class="stat">รออนุมัติ<strong id="stat-pending">0</strong></div>
+    <div class="stat">กำลังตรวจ<strong id="stat-review">0</strong></div>
+    <div class="stat">เร่งด่วน<strong id="stat-urgent">0</strong></div>
+    <div class="stat">เกินกำหนด<strong id="stat-overdue">0</strong></div>
+    <div class="stat">อนุมัติวันนี้<strong id="stat-approved">0</strong></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>สร้าง Task ทดสอบ/งานบริหาร</h3>
+      <form id="task-form" class="form">
+        <label>Module<select id="task-module"><option>user_access</option><option>pharmacy</option><option>production</option><option>inventory</option><option>billing</option><option>system</option></select></label>
+        <label>Task type<input id="task-type" required placeholder="stock_adjustment"></label>
+        <label class="full">หัวข้อ<input id="task-title" required></label>
+        <label class="full">รายละเอียด<textarea id="task-description"></textarea></label>
+        <label>Priority<select id="task-priority"><option>normal</option><option>high</option><option>urgent</option><option>critical</option></select></label>
+        <label>Due date<input id="task-due" type="datetime-local"></label>
+        <button class="btn primary full">สร้าง Approval Task</button>
+      </form>
+    </div>
+    <div class="card"><h3>งานที่ต้องดำเนินการ</h3><div id="task-list" class="list"></div></div>
+  </div>
+</section>
+<section class="view" id="users">
+  <div class="grid2">
+    <div class="card">
+      <h3>กำหนด Role ปฏิบัติงาน</h3>
+      <p>ผู้ใช้ใหม่ต้องเข้าสู่ระบบ Google ก่อน จากนั้น Super Admin เลือกบัญชีที่รอกำหนดสิทธิ์และบันทึกแผนก หากใช้เฉพาะ U Synthesise เลือก viewer</p>
+      <form id="staff-role-form" class="form">
+        <label class="full">ผู้ใช้<select id="staff-user" required></select></label>
+        <label>แผนก / Department role<select id="staff-role"><option value="practitioner">ผู้ประกอบวิชาชีพ — practitioner</option><option value="doctor">แพทย์ — doctor</option><option value="reception">ต้อนรับ — reception</option><option value="pharmacy">ห้องยา — pharmacy</option><option value="production">ผลิต — production</option><option value="inventory">คลัง — inventory</option><option value="quality">คุณภาพ — quality</option><option value="billing">การเงิน — billing</option><option value="viewer">ดูอย่างเดียว — viewer</option></select></label>
+        <label>เหตุผล<input id="staff-reason"></label>
+        <button class="btn primary full">บันทึก Role</button>
+      </form>
+    </div>
+    <div class="card" id="super-admin-card">
+      <h3>Super Admin: แต่งตั้ง Admin ธรรมดา</h3>
+      <form id="system-role-form" class="form">
+        <label class="full">ผู้ใช้<select id="system-user" required></select></label>
+        <label>System role<select id="system-role"><option value="admin">admin</option><option value="staff">staff</option></select></label>
+        <label>เหตุผล<input id="system-reason"></label>
+        <button class="btn primary full">บันทึก System Role</button>
+      </form>
+    </div>
+  </div>
+  <div class="card"><div class="row"><h3>รายชื่อและสิทธิ์</h3><button type="button" class="btn ghost" id="refresh-users">โหลดรายชื่อใหม่</button></div><div id="user-list" class="list"></div></div>
+</section>
+<section class="view" id="history"><div class="card"><h3>ประวัติการอนุมัติ</h3><div id="action-list" class="list"></div></div></section>
+<section class="view" id="clinical-audit">
+  <div class="hero"><h2>Clinical Audit & Amendment</h2><p>ตรวจการ Sign-off, Record Lock และประวัติการแก้ไขเวชระเบียนจากจุดควบคุมเดียว</p></div>
+  <div class="grid2 space-top-md">
+    <div class="card">
+      <div class="section-heading"><span class="section-number">A</span><div><h2>ค้นหา Encounter</h2><p>ใช้ Encounter UUID หรือเลข Encounter</p></div></div>
+      <form id="audit-search-form" class="form">
+        <label class="full">Encounter ID / No.<input id="audit-query" required placeholder="Encounter UUID หรือเลข Encounter"></label>
+        <button class="btn primary full">ค้นหา</button>
+      </form>
+      <div id="audit-signoff" class="status space-top-sm">ยังไม่ได้ค้นหา</div>
+    </div>
+    <div class="card">
+      <div class="section-heading"><span class="section-number">U</span><div><h2>เปิดเพื่อ Amendment</h2><p>ทุกการปลด Lock ต้องมีเหตุผลและถูกบันทึกใน Audit trail</p></div></div>
+      <form id="amend-form" class="form">
+        <label class="full">Encounter ID<input id="amend-encounter" required readonly></label>
+        <label class="full">เหตุผลอย่างน้อย 5 ตัวอักษร<textarea id="amend-reason" required></textarea></label>
+        <button class="btn danger full">Unlock for Amendment</button>
+      </form>
+    </div>
+  </div>
+  <div class="card"><h3>Audit Timeline</h3><div id="clinical-audit-list" class="list"><p class="muted">ค้นหา Encounter เพื่อดู Timeline</p></div></div>
+</section>
+</main>
+</div></div>
+<div class="toast" id="toast"></div>
+</body>
+</html>

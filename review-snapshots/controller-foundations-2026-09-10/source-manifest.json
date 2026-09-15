@@ -1,0 +1,597 @@
+{
+  "schemaVersion": 1,
+  "kind": "inert-controller-review-source-snapshot",
+  "sourceRepository": "apisarit/chananya-clinical-wellness-os",
+  "sourceGitHead": "4e98152f91c65bb7089222145b04620ba919306a",
+  "provenance": "Dirty engineering working-tree bytes, including existing and new changes; not a committed release snapshot.",
+  "sourceAllowlistSha256": "36c823b396d5260d366d77a0b8f36c4914a7b5706bbb4693cf764b2aec032116",
+  "destinationRepository": "apisarit/cnyos-staging-deployment-control",
+  "sourcePrefix": "source",
+  "fileCount": 96,
+  "totalBytes": 2708563,
+  "authenticatedStagingVerified": false,
+  "independentSecurityApproval": false,
+  "activationAuthorized": false,
+  "productionAuthorization": false,
+  "files": [
+    {
+      "path": "admin.html",
+      "bytes": 8922,
+      "sha256": "1f26d6b9804e7f012f40bf6e235d865870ce5862caf5558132353f07b4b43abb",
+      "mode": "100644"
+    },
+    {
+      "path": "admin.js",
+      "bytes": 9085,
+      "sha256": "9512d7eee7068b0bfba20a0f4a90bbd5b66c7f3da6a7c676479cd7dfbad7f818",
+      "mode": "100644"
+    },
+    {
+      "path": "app-shell.js",
+      "bytes": 5495,
+      "sha256": "e0aff51fb6f2adf6dea4d835e0da4092cffa53c1040293523261d15cddf60884",
+      "mode": "100644"
+    },
+    {
+      "path": "appointments.html",
+      "bytes": 6675,
+      "sha256": "dd555a44316c81ad8261e43e5df9599b43f4b4e917e8cebfdf2ded171383f255",
+      "mode": "100644"
+    },
+    {
+      "path": "appointments.js",
+      "bytes": 11065,
+      "sha256": "6cf885fe4dbc11ef03d2315408364265b094065b78e3331de3a10ba7a406f14e",
+      "mode": "100644"
+    },
+    {
+      "path": "chananya-runtime.js",
+      "bytes": 10445,
+      "sha256": "d37cf5c6ced064057c7ae0e278f6a057213470f812b79ec49b68d6318f7b8b11",
+      "mode": "100644"
+    },
+    {
+      "path": "check-in.html",
+      "bytes": 9180,
+      "sha256": "59d354cc3e90584bc1af3d15a304cc2dd0faeeda3a4e433180003ae8f886a97d",
+      "mode": "100644"
+    },
+    {
+      "path": "check-in.js",
+      "bytes": 13213,
+      "sha256": "7bed759fd514596ce1fbed97649fd82d08d6cb21a45d6551e15c63fc77a46cbe",
+      "mode": "100644"
+    },
+    {
+      "path": "clinical-v3.html",
+      "bytes": 29770,
+      "sha256": "8533d0f5d352189611a68b77384c7118203c6b1ef34b0fead62ca89f80373b82",
+      "mode": "100644"
+    },
+    {
+      "path": "clinical-v3.js",
+      "bytes": 19900,
+      "sha256": "c021cef1ea665df6ba9163a115521bab23bf09d0673e528967eef564e1c98354",
+      "mode": "100644"
+    },
+    {
+      "path": "foundation.html",
+      "bytes": 20606,
+      "sha256": "4d65011d3522beea07e192041cac6706e88e1d958424f3902eed62ea926c9f38",
+      "mode": "100644"
+    },
+    {
+      "path": "foundation.js",
+      "bytes": 37273,
+      "sha256": "771f19a20b102540635f52c966a16a96e0a02d7f70804177208ca78a2b5055fb",
+      "mode": "100644"
+    },
+    {
+      "path": "index.html",
+      "bytes": 13406,
+      "sha256": "de8e7f3a01e7814b8d68753a8ed05a6cc4da67c92456eaadfbfb5d23e48c8d17",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/README.md",
+      "bytes": 55622,
+      "sha256": "86ade882ba6e5e4a9c2f65f6cbd3fed4cfd146dd5430f2a73ebef8541b5d1fcb",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/approver-registry.template.json",
+      "bytes": 769,
+      "sha256": "f58094a90653a31a0ca5367e4a53efbdefd2dc3cace9b6df7398ded4135162e5",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/controller-policy.json",
+      "bytes": 11080,
+      "sha256": "c82ebdac68d5b24b395cf879fc4a28f1c52c620cef75fceee6ea9c0b79821927",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/package-lock.json",
+      "bytes": 34746,
+      "sha256": "548f90ad43dc8ab6d2839009dc104fbaaeab5279c9923064303ff8fee52c971b",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/package.json",
+      "bytes": 1943,
+      "sha256": "ecadb8d88a84ea39b3f83acf5608db5d305093d209c67fd256e184752255ffea",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs",
+      "bytes": 5537,
+      "sha256": "b42d316723d53aa5b8e12cf7ab2e606b1a78b5a80d5debc78d1c521d71610b81",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-authenticated-uat.mjs",
+      "bytes": 5201,
+      "sha256": "037f491ba097ebe2de9f7d13462b5c1611a979e3a308c4fceffbc28263a34afb",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-function-bundle.mjs",
+      "bytes": 35807,
+      "sha256": "99fb7f10b69eaebc81fc4111f8ec4e707725253ca5dd644515139201e51fad70",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-static-reproducibility.mjs",
+      "bytes": 29854,
+      "sha256": "7fa5540d6059bce129e282f2fc59c9029c0fbeee28bb9009b203ffb7bc481496",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-access-observations.mjs",
+      "bytes": 4674,
+      "sha256": "a032019917731bf0babc96db3a138670c1f0f1f44146881b96fd888f0d47df1b",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-matrix.mjs",
+      "bytes": 20608,
+      "sha256": "c29c8c062ba00d22de502c2c8ce89d2a23a8a06eb48bc2d5d7833de91d0538e3",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-read-policy.mjs",
+      "bytes": 16863,
+      "sha256": "6fafba5cc5225b4d7e8e7fccb898bc2c8a1ec0b37e409cc126b035f092316080",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-transport.mjs",
+      "bytes": 32185,
+      "sha256": "5e07765c98101d36616557e571e8650c7a4330b5726d2e31232fa5907b134760",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-evidence-publication.mjs",
+      "bytes": 6057,
+      "sha256": "3a2bd4d62daa37544c6ce7c410bf8eeb041475c232190ad698b742021a3ea30e",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/create-function-comparison-handoff.mjs",
+      "bytes": 10920,
+      "sha256": "38349d36c50a16e94db349774b144ddaf360e0eca087451052a86e7e443c8ed2",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/create-netlify-draft-with-durable-intent.mjs",
+      "bytes": 18734,
+      "sha256": "7335e6b0b07998cf84dc72b8f668ca032064c5a3607ff493457474825cbb6975",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/create-producer-bundle.mjs",
+      "bytes": 35901,
+      "sha256": "d4145aa762115ce320aeab4d4456926e1480ae9e4f414c6a6f433e22ea3a8a3d",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/deposit-rollback-attestation.mjs",
+      "bytes": 48840,
+      "sha256": "0e076be993bc3ff225314bc929ced602032d62a64a6e0e16b6e46f40a908279d",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/finalize-evidence.mjs",
+      "bytes": 54067,
+      "sha256": "f0569ec4c8bf5560cf7c317246e3c3a8f35773d2046c4d16de8b7ba9ec1da84f",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/materialize-function-recipe-input.mjs",
+      "bytes": 9772,
+      "sha256": "a9ea4874963b5208361ee9d69382f406633b8e622a4ed9ec84b18bed701ee7c3",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/netlify-evidence.mjs",
+      "bytes": 142613,
+      "sha256": "8db06dceae9bc021e232c07e944fa6515487a025972e8cea90df97f94f74f64c",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/policy.mjs",
+      "bytes": 14998,
+      "sha256": "be190288930a6ea72848db3960a98fed793f23214b35ec6692ee065d4a6a8324",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/private-draft-access-boundary.mjs",
+      "bytes": 35295,
+      "sha256": "057e88082fdf070ac7cc603ecc82c3e7789991a466874f0df2ab54ec86ed10ef",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs",
+      "bytes": 133153,
+      "sha256": "87a37b3b3b2dde34d8f7b3ad536505f5929c893961785f591a2a9872de0a9d58",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/release-netlify-exclusive-publisher.mjs",
+      "bytes": 11741,
+      "sha256": "925e95f10b03b48b0150d2e82ef6f0f360798db5695b7309c6afd4c4d59d7ce2",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/rollback-readiness.mjs",
+      "bytes": 23798,
+      "sha256": "ca42892d75ffde19682bfe990ef5349b8392ea367ada631978dfec9c0d984aa0",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
+      "bytes": 11244,
+      "sha256": "81da02044d09ce2bacb4a4c0edccff185a38058ac7c45d8cebc451c7a22e7e04",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/scheduled-function-route-denial.mjs",
+      "bytes": 29235,
+      "sha256": "259fa19b02752ce8317385091a0117fb8bebbcee7e03f2df6a68a90c00a3ebe1",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/validate-function-environment.mjs",
+      "bytes": 17433,
+      "sha256": "956b4ac7e63831cc9f9e8a498f1bd8ebffd7ef1ee434419ead861140cdb8c2bf",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-authorization.mjs",
+      "bytes": 66291,
+      "sha256": "0e16b14d98b441793870d21c2b595f6b1396b17f24dee78fb5e833adb8e27876",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-backup-disable-runtime-boundary.mjs",
+      "bytes": 48954,
+      "sha256": "b24fbd95528f79734c0633f610d4bf9be18227220be4c851e87e53adb0b46ac6",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-live-github-release-boundary.mjs",
+      "bytes": 37525,
+      "sha256": "a7fb733ffa4a6f8d8f612a500563768d8663e29a0b4f7eb527196dad6c88e271",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-live-netlify-authority-boundary.mjs",
+      "bytes": 7361,
+      "sha256": "2ad2b502b15ddafb11acfdf09254a39dead03554c5e244025e5dcb2a0df4064d",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-netlify-control-file-behavior.mjs",
+      "bytes": 44181,
+      "sha256": "8ed8524e0dc78bbbd47fcfa39ef7aadf76cabae53f5078eee981c30446fc0737",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-netlify-exclusive-publisher.mjs",
+      "bytes": 18984,
+      "sha256": "67a44764d1b912d75fd711ba2590785105203ee92bdb13d77b0794d0fdc215d6",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-private-draft-lifecycle.mjs",
+      "bytes": 13681,
+      "sha256": "2f7b92935135c6c429680504001ee221c835c21be7dd8bdcd98dd23ef8a2b60e",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-producer-bundle.mjs",
+      "bytes": 17701,
+      "sha256": "2a51cd7aa0b335114de3c9f9f371429a6bf3e1a8acb9814ccf6a106525f6fe7f",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-rollback-attestation-deposit.mjs",
+      "bytes": 22253,
+      "sha256": "a9080797b558415a81df8951fb56a817af5b37c47896be46455c52e0ca8c44da",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-rollback-authorization-chain.mjs",
+      "bytes": 4894,
+      "sha256": "703874219037f6a197c176d1ebe636a6138baea1c1d1feb74cdabab0a5219edf",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/scripts/verify-runtime-capability-boundary.mjs",
+      "bytes": 9626,
+      "sha256": "d7b0712a20637eb5cf46e5fe3e25e886c4c5538c73b4029776e910e998465bb4",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/test-support/uat-browser-local.mjs",
+      "bytes": 18002,
+      "sha256": "ae3c142e36d6988fae11206a3afd20383218e5e368702ef86f9f281bd3397518",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/authorization-foundation-security-contract.mjs",
+      "bytes": 77180,
+      "sha256": "f4a9512a98715ced18bcd32f62ceb47c7a59945ed2922a371ad014842709e210",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/backup-disable-runtime-boundary-contract.mjs",
+      "bytes": 25914,
+      "sha256": "39116b30075fc97e869ef9374390abbc9559aaea1bc66488dddae4568bd256b8",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-authenticated-uat-contract.mjs",
+      "bytes": 13303,
+      "sha256": "cceeabb3d196ee98e3d059bc419d4e4ee6e0d1ed89ec930c1349f7cd77b7fb39",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
+      "bytes": 229096,
+      "sha256": "dd672e67601f09c422741105ac3dbd77b78a9ef7b949d830a8213b5848ce6e76",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-function-bundle-contract.mjs",
+      "bytes": 33621,
+      "sha256": "c826ebfcd5fcdd482bb744cafdb4cd563b8db442324af86e6f4bf39690f17871",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-static-reproducibility-contract.mjs",
+      "bytes": 19520,
+      "sha256": "ea9f2e15a7a53b4350216c9c735cfcc65140f9851740043bda4a8b3522202c4e",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-access-observations-contract.mjs",
+      "bytes": 8750,
+      "sha256": "ef3323fdb8f3cd747b29cfe8a8b23432d93b5f6cbde28c03844cc178b01d8f1e",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-matrix-contract.mjs",
+      "bytes": 21960,
+      "sha256": "956a1eded3f4bd94f8452d3bdd24f4ef377f56f4181aeabc687888d2eeff7ba8",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-read-policy-contract.mjs",
+      "bytes": 11969,
+      "sha256": "1e1bfc5c0e5ab72a953164b99c795eafa9e84c4b7a3afc4959a0cf75d517b12e",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-transport-contract.mjs",
+      "bytes": 29014,
+      "sha256": "33689f4e255be2c438d3a76c6efce3fc46f402da349bb0461e73877c9338f344",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-evidence-publication-contract.mjs",
+      "bytes": 9565,
+      "sha256": "3021a0896c337d98c09aa5383dc7cf2a85fe944df98c527f5d6e7afe20a1e586",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/draft-mutation-recovery-contract.mjs",
+      "bytes": 27729,
+      "sha256": "554189764fd702b76c9abab9f55e3260a3993ae021121e22ea137ada8209a852",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/external-broker-trust-boundaries-contract.mjs",
+      "bytes": 13411,
+      "sha256": "0367c55824000c3ed6d0a2f0c8579488adad6c9b8573846c7b386d59e72b2c0d",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/function-comparison-handoff-contract.mjs",
+      "bytes": 11029,
+      "sha256": "aa386a3297e18fd7e88e9f33e0bf5e513ccb6bc90a0384dcf518a1b8017773a2",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/function-recipe-input-contract.mjs",
+      "bytes": 12006,
+      "sha256": "2be1ccb24b0bb06ea9f118365f3490775bdaac8000483b27138c32ac2c652361",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/live-github-release-boundary-contract.mjs",
+      "bytes": 30110,
+      "sha256": "6886d8b164fc93478e64574ab2e61911d40948cb27ebdde36de8b8fdea49c0f0",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/live-netlify-authority-boundary-contract.mjs",
+      "bytes": 19809,
+      "sha256": "9df739b8d154886bee61e59426c0d4eee234362f69ae7e6b4ce3ee6bc317c73a",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/netlify-control-file-behavior-contract.mjs",
+      "bytes": 33927,
+      "sha256": "fe1869a79ca671c0593baf79c0d5230be3ea734e7e878c435289bb79ad76c7e5",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/netlify-exclusive-publisher-contract.mjs",
+      "bytes": 16013,
+      "sha256": "6d1ba9be877937034cfda694b902c690564fad7ee241b3d7b9b8732f9e38552f",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/private-draft-access-boundary-contract.mjs",
+      "bytes": 38299,
+      "sha256": "e6ab4984666094ab768ff385adfaf12e3c083a1febba0384b63818a9ac6ef507",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/private-draft-lifecycle-contract.mjs",
+      "bytes": 6772,
+      "sha256": "5b2feb92a9401566f787a32c9178d1b5f8c3fe233d086049598802c634800078",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/release-state-reconciliation-contract.mjs",
+      "bytes": 122628,
+      "sha256": "0774a93f162636395df55a4ee080babe1c39cd83434fe7c4dc17ce3dc521a684",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/rollback-attestation-deposit-contract.mjs",
+      "bytes": 43011,
+      "sha256": "5397c1280814c2cfb7a87dabee15b8cfd6bfb0cb7bb1009fd68cb259e2956692",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/rollback-authorization-chain-contract.mjs",
+      "bytes": 5309,
+      "sha256": "8f2fb2035649af05a4a88dce65458fb4a0e3782f1decb0d0ce3a61095adbd0ef",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/rollback-principal-boundary-contract.mjs",
+      "bytes": 23933,
+      "sha256": "d6c894e6cbc0cf766cbc1b15a1a198cd3da8e39365bf0a99b733834bdda5d9af",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/rollback-readiness-contract.mjs",
+      "bytes": 27833,
+      "sha256": "b37a4a79b16d15c9f66041db1ec32ce86bf6dbc0c448d9cd0472682f9707b0e2",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/runtime-capability-boundary-contract.mjs",
+      "bytes": 9877,
+      "sha256": "3a7535df4798866ab3feb6b7127d1eaf158192da8ffe7b9e9f779683ee36dd2f",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/scheduled-function-route-denial-contract.mjs",
+      "bytes": 28512,
+      "sha256": "f0b920a78affdcbc8d715b6a3df2509e76f86bb12ba1b224d2f744a849a8aa9a",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/tests/uat-evidence-schema-contract.mjs",
+      "bytes": 15482,
+      "sha256": "82f820ddc9e48286185178b6185b16a56051606a5f9a42f574a07e57336a9312",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/workflow/cnyos-staging-controller.template.yml",
+      "bytes": 207607,
+      "sha256": "25ec24ccaf5f2405b93b59a439654c69047ced3fd810a7860314fe86718f46c3",
+      "mode": "100644"
+    },
+    {
+      "path": "ops/cnyos-staging-controller/workflow/cnyos-staging-rollback-watchdog.template.yml",
+      "bytes": 37149,
+      "sha256": "5df5cda24fdce709ac7a370519a95f44e1e9fcf378d5bb9ffe9a8c8bfd750433",
+      "mode": "100644"
+    },
+    {
+      "path": "outcomes.html",
+      "bytes": 5633,
+      "sha256": "1df322c519e22ccd46f9fb7b8ed1a9be8612a1401624f38a7e482e4b2f29fc82",
+      "mode": "100644"
+    },
+    {
+      "path": "outcomes.js",
+      "bytes": 7260,
+      "sha256": "98447611995560afaafd8ed9b5474da9281949b2c77487fd8a0acaf819f90a3a",
+      "mode": "100644"
+    },
+    {
+      "path": "pharmacy.html",
+      "bytes": 11690,
+      "sha256": "e840bc03afc66a2fb35bb7a51608c0e250c7623dba8fefc1c12bff43fc9d4d5f",
+      "mode": "100644"
+    },
+    {
+      "path": "pharmacy.js",
+      "bytes": 29006,
+      "sha256": "8827a2d7561dbcbfe978f309662db3cbc2525eeb9bd5a6f1c54b9513c5e52cea",
+      "mode": "100644"
+    },
+    {
+      "path": "platform-config.js",
+      "bytes": 10381,
+      "sha256": "ed5938226ff12849121117c60f4815cb75d177ce8cb46202c724a83eec5b8e04",
+      "mode": "100644"
+    },
+    {
+      "path": "production.html",
+      "bytes": 8231,
+      "sha256": "4f8057a524a979b273244ced360189cd163f1fda08bd78a976a0afe62af20569",
+      "mode": "100644"
+    },
+    {
+      "path": "production.js",
+      "bytes": 23429,
+      "sha256": "71fb7abea3fdf53235b23164f8b83a4695d570e16a230ff0286dbf3391a89139",
+      "mode": "100644"
+    },
+    {
+      "path": "quality.html",
+      "bytes": 6621,
+      "sha256": "49050f4b31338ea03cdcefb6f9d89657eef23dfb3d51ec21d217229939de76b0",
+      "mode": "100644"
+    },
+    {
+      "path": "quality.js",
+      "bytes": 9837,
+      "sha256": "11097d0f37ecdc01d7c7df7c3683e948ffad8cd7d4a5477813c8ddaa43f1a9e1",
+      "mode": "100644"
+    },
+    {
+      "path": "scripts/staging-support.mjs",
+      "bytes": 10874,
+      "sha256": "19900067612ab50a02cab2a1c1e0a151415302bcae93bb3662148a19181eced8",
+      "mode": "100644"
+    },
+    {
+      "path": "scripts/verify-authenticated-staging.mjs",
+      "bytes": 12085,
+      "sha256": "e29e3d0db9c4221b3e28e0f8e64500a6edd726a49b76bfc02f1062aa717fa946",
+      "mode": "100644"
+    }
+  ],
+  "snapshotRevision": 2,
+  "previousReviewCommit": "0d501b121de6bd57bdb1a23b08ed8f8c898671b8",
+  "previousSourceManifestSha256": "747a395a3ae07da0c47ceb4f7bcf7d486917a8ec1268194717158ccca903cf7a"
+}

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>TTM Foundation v0.2 • Chananya</title>
+  <link rel="stylesheet" href="app.css?v=ttm-foundation-v2">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-foundation1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=clinical-os-foundation1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-department1"></script>
+  <script defer src="ttm-reasoning.js?v=ttm-foundation-v2"></script>
+  <script defer src="foundation.js?v=ttm-foundation-v2"></script>
+</head>
+<body data-page="foundation">
+  <div id="boot"><div><div class="spinner"></div><h2>กำลังเปิด TTM Foundation v0.2</h2><p id="boot-error">กำลังตรวจสอบกฎ ความสัมพันธ์ และหลักฐาน</p></div></div>
+
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical &amp; Wellness OS</small></span></a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Source before inference<br>Practitioner before conclusion</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+
+    <div class="workspace">
+      <header class="top">
+        <div class="actions">
+          <button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button>
+          <div class="top-title"><span class="page-kicker">TTM Foundation v0.2</span><h1>Diagnostic Knowledge Graph</h1></div>
+        </div>
+        <div class="actions">
+          <div class="identity-block"><small id="identity"></small></div>
+          <span class="badge" id="role">viewer</span>
+          <button class="btn ghost" id="logout">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero foundation-hero">
+          <span class="foundation-eyebrow">PERSON → EVIDENCE → HYPOTHESIS</span>
+          <h2>จากทะเบียนความรู้ สู่ระบบช่วยคิดที่บอกได้ว่า “รู้อะไร–ยังไม่รู้อะไร”</h2>
+          <p>แยกเลนส์ธาตุเจ้าเรือน อายุ กาล และอาการออกจากกัน เชื่อมทุกข้อด้วยกฎและแหล่งอ้างอิง พร้อมหยุดเมื่อหลักฐานยังไม่พอ ระบบนี้ช่วยตั้งสมมติฐาน ไม่วินิจฉัยแทนผู้ประกอบวิชาชีพ</p>
+          <div class="foundation-mode-row"><span class="badge" id="foundation-mode">กำลังตรวจฐานความรู้</span><a class="btn ghost" href="/clinical-v3.html?step=diagnosis">ไปยืนยันในเวชระเบียน</a><a class="btn ghost" href="/evidence.html">ค้นงานวิจัยและฉลากยา</a><a class="btn ghost" href="/luopan.html">U Synthesise · วงล้อองค์ความรู้</a></div>
+        </section>
+
+        <div class="stats foundation-stats foundation-stats-v2">
+          <div class="stat">กฎบริบท<strong id="foundation-rule-count">0</strong><small>แยกตามเลนส์</small></div>
+          <div class="stat">กฎคลินิกที่อนุมัติ<strong id="foundation-clinical-rule-count">0</strong><small>finding → hypothesis</small></div>
+          <div class="stat">ความสัมพันธ์<strong id="foundation-relation-count">0</strong><small>typed edges</small></div>
+          <div class="stat">ข้ออ้างด้านการรักษา<strong id="foundation-therapy-count">0</strong><small>ยังไม่ใช่ใบสั่งยา</small></div>
+          <div class="stat">รับรองแล้ว<strong id="foundation-approved-count">0</strong><small>ใช้ตามขอบเขต</small></div>
+          <div class="stat">รอทบทวน<strong id="foundation-review-count">0</strong><small>ห้ามสรุปอัตโนมัติ</small></div>
+        </div>
+
+        <nav class="foundation-tabs" aria-label="มุมมองฐานความรู้">
+          <button type="button" class="active" data-foundation-tab="case" aria-selected="true">1 วิเคราะห์บุคคล</button>
+          <button type="button" data-foundation-tab="knowledge" aria-selected="false">2 แผนที่ความรู้</button>
+          <button type="button" data-foundation-tab="coverage" aria-selected="false">3 Coverage &amp; Review</button>
+        </nav>
+
+        <div class="foundation-tab-panel active" data-foundation-panel="case">
+          <div class="foundation-workbench">
+            <section class="card foundation-case-input">
+              <div class="section-heading"><span class="section-number">1</span><div><h2>ข้อมูลสำหรับตั้งสมมติฐาน</h2><p>ข้อมูลตัวอย่างอยู่ในหน้านี้เท่านั้น ไม่บันทึกลงเวชระเบียน</p></div></div>
+              <form id="ttm-case-form" class="foundation-case-form">
+                <label>ชื่อเคส / รหัสอ้างอิง<input id="ttm-case-name" autocomplete="off" placeholder="เช่น เคสทดลอง A"></label>
+                <div class="foundation-form-row">
+                  <label>วันเกิด<input id="ttm-birth-date" type="date"></label>
+                  <label>เดือนปฏิสนธิ (ถ้าทราบ)<select id="ttm-conception-month"><option value="">ไม่ระบุ</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label>
+                </div>
+                <div class="foundation-form-row">
+                  <label>เวลาที่อาการเด่น<input id="ttm-symptom-time" type="time"></label>
+                  <label>เลนส์กาล<select id="ttm-kala-mode"><option value="main">กาลสมุฏฐานหลัก</option><option value="ekadot">เอกโทษ</option><option value="duvandot">ทวิโทษ</option><option value="tridot">ตรีโทษ</option></select></label>
+                </div>
+                <label>อาการ / สิ่งตรวจพบ<textarea id="ttm-observation-text" rows="4" placeholder="บันทึกตามที่พบ ระบบจะไม่แปลงข้อความนี้เป็นคะแนนเอง"></textarea></label>
+                <fieldset>
+                  <legend>สมมติฐานของผู้ประกอบวิชาชีพ (ไม่ใช่ผลจากระบบ)</legend>
+                  <div class="foundation-form-row">
+                    <label>แกนที่กำลังพิจารณา<select id="ttm-hypothesis-axis"><option value="">ยังไม่เลือก</option><option value="pitta">ปิตตะ</option><option value="vata">วาตะ</option><option value="semha">เสมหะ</option></select></label>
+                    <label>สภาวะ<select id="ttm-hypothesis-state"><option value="">ยังไม่เลือก</option><option value="กำเริบ">กำเริบ</option><option value="หย่อน">หย่อน</option><option value="พิการ">พิการ</option></select></label>
+                  </div>
+                </fieldset>
+                <div class="actions">
+                  <button class="btn" type="submit">วิเคราะห์ความเชื่อมโยง</button>
+                  <button class="btn ghost" id="ttm-load-sample" type="button">โหลดเคสตัวอย่าง</button>
+                  <button class="btn ghost" id="ttm-clear-case" type="button">ล้าง</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="card foundation-case-result" aria-live="polite">
+              <div class="section-heading"><span class="section-number">2</span><div><h2>ผลการให้เหตุผล</h2><p>บริบทไม่เท่ากับโรค และคะแนนไม่ใช่ความน่าจะเป็น</p></div></div>
+              <div id="ttm-case-status" class="foundation-case-status">กรอกข้อมูลหรือโหลดเคสตัวอย่างเพื่อเริ่ม</div>
+              <div id="ttm-clinical-gate" class="foundation-clinical-gate blocked"><b>Clinical inference: ยังไม่เปิด</b><span>ต้องมีกฎสิ่งตรวจพบ → สมมติฐานที่ผ่านอนุมัติก่อน</span></div>
+              <h3 class="foundation-subhead">เลนส์ที่ใช้</h3>
+              <div id="ttm-lenses" class="foundation-lens-grid"><div class="status">ยังไม่มีข้อมูล</div></div>
+              <h3 class="foundation-subhead">น้ำหนักบริบทตามแกน</h3>
+              <div id="ttm-context-axis-cards" class="foundation-axis-grid"><div class="status">ยังไม่มีข้อมูล</div></div>
+              <div class="foundation-message-grid">
+                <section><h3>ข้อขัดแย้งที่ไม่ควรถูกกลบ</h3><div id="ttm-conflicts" class="foundation-message-list"></div></section>
+                <section><h3>ช่องว่างความรู้</h3><div id="ttm-gaps" class="foundation-message-list"></div></section>
+              </div>
+            </section>
+          </div>
+
+          <section class="card">
+            <div class="section-heading"><span class="section-number">3</span><div><h2>เส้นทางเหตุผล</h2><p>ทุกช่วงต้องมี evidence และผู้รับผิดชอบก่อนขยับไปขั้นถัดไป</p></div></div>
+            <div id="ttm-reasoning-path" class="foundation-reasoning-path"></div>
+          </section>
+
+          <div class="foundation-audit-grid">
+            <section class="card">
+              <div class="section-heading"><span class="section-number">A</span><div><h2>Evidence audit</h2><p>กฎที่จับคู่ สถานะ และแหล่งที่มา</p></div></div>
+              <div id="ttm-evidence-audit" class="foundation-audit-table"><div class="status">ยังไม่มีการวิเคราะห์</div></div>
+            </section>
+            <section class="card">
+              <div class="section-heading"><span class="section-number">Rx</span><div><h2>ตัวเลือกจากฐานพิกัดยา</h2><p>แสดงเมื่อผู้ประกอบวิชาชีพเลือกแกนเท่านั้น เป็น claim เพื่อทบทวน ไม่ใช่คำสั่งใช้ยา</p></div></div>
+              <div id="ttm-therapy-candidates" class="foundation-therapy-list"><div class="status">เลือกสมมติฐานก่อนเพื่อดูความเชื่อมโยง</div></div>
+            </section>
+          </div>
+        </div>
+
+        <div class="foundation-tab-panel" data-foundation-panel="knowledge" hidden>
+          <section class="card foundation-root-card">
+            <div class="section-heading"><span class="section-number">K</span><div><h2>แผนที่ความรู้ 5 ชั้น</h2><p>เลือกชั้นแล้วดู node, relation, source และสถานะทบทวนจริง</p></div></div>
+            <div class="foundation-layers" id="foundation-layers">
+              <button type="button" class="foundation-layer active" data-foundation-layer="all" aria-pressed="true" aria-controls="foundation-results"><span class="foundation-layer-index">ทั้งหมด</span><b>แผนที่รวม</b><small>source ถึง clinical use</small><span class="foundation-layer-action" data-layer-action>กำลังแสดง ✓</span><strong id="layer-count-all">0</strong></button>
+              <button type="button" class="foundation-layer" data-foundation-layer="1" aria-pressed="false" aria-controls="foundation-results"><span class="foundation-layer-index">ชั้น 1</span><b>โลก–มนุษย์–ธาตุ</b><small>ธาตุเจ้าเรือนและแบบจำลองมนุษย์</small><span class="foundation-layer-action" data-layer-action>แตะเพื่อดูรายการ ↓</span><strong id="layer-count-1">0</strong></button>
+              <button type="button" class="foundation-layer" data-foundation-layer="2" aria-pressed="false" aria-controls="foundation-results"><span class="foundation-layer-index">ชั้น 2</span><b>วินิจฉัยเชิงหน้าที่</b><small>สมุฏฐาน พิกัด และสภาวะ</small><span class="foundation-layer-action" data-layer-action>แตะเพื่อดู ↓</span><strong id="layer-count-2">0</strong></button>
+              <button type="button" class="foundation-layer" data-foundation-layer="3" aria-pressed="false" aria-controls="foundation-results"><span class="foundation-layer-index">ชั้น 3</span><b>โรคและคัมภีร์เฉพาะ</b><small>โรค อาการ กลไก และคัมภีร์</small><span class="foundation-layer-action" data-layer-action>แตะเพื่อดู ↓</span><strong id="layer-count-3">0</strong></button>
+              <button type="button" class="foundation-layer" data-foundation-layer="4" aria-pressed="false" aria-controls="foundation-results"><span class="foundation-layer-index">ชั้น 4</span><b>เภสัชและการรักษา</b><small>หลักรักษา ตำรับ สมุนไพร และรสยา</small><span class="foundation-layer-action" data-layer-action>แตะเพื่อดู ↓</span><strong id="layer-count-4">0</strong></button>
+              <button type="button" class="foundation-layer" data-foundation-layer="5" aria-pressed="false" aria-controls="foundation-results"><span class="foundation-layer-index">ชั้น 5</span><b>หัตถการและเส้น</b><small>เส้น จุด และหัตถการ</small><span class="foundation-layer-action" data-layer-action>แตะเพื่อดู ↓</span><strong id="layer-count-5">0</strong></button>
+            </div>
+            <div class="foundation-chain" aria-label="สายสืบย้อนองค์ความรู้"><span>Source</span><i>→</i><span>Concept</span><i>→</i><span>Typed relation</span><i>→</i><span>Finding</span><i>→</i><span>Practitioner confirmation</span></div>
+          </section>
+
+          <div class="foundation-browser" id="foundation-browser">
+            <section class="card">
+              <div class="section-heading"><span class="section-number">N</span><div><h2>ค้น node ความรู้</h2><p>ค้นชื่อ คำอธิบาย รหัส หรือ source</p></div></div>
+              <div class="toolbar foundation-toolbar"><label>คำค้น<input id="foundation-search" type="search" placeholder="เช่น วาตะ กาล พิกัด ตำรับ"></label><label>ชนิด node<select id="foundation-type"><option value="">ทุกชนิด</option></select></label><button class="btn ghost" id="foundation-reset" type="button">ล้างตัวกรอง</button></div>
+              <div class="foundation-result-meta" id="foundation-result-meta" role="status" aria-live="polite">กำลังโหลด</div>
+              <div class="foundation-concepts" id="foundation-results"></div>
+            </section>
+            <aside class="card foundation-detail" id="foundation-detail"><div class="section-heading"><span class="section-number">S</span><div><h2>Source &amp; Relation</h2><p>เลือก node เพื่อดูสายสืบย้อน</p></div></div><div id="foundation-detail-content" class="status">ยังไม่ได้เลือก node</div></aside>
+          </div>
+        </div>
+
+        <div class="foundation-tab-panel" data-foundation-panel="coverage" hidden>
+          <section class="card">
+            <div class="section-heading"><span class="section-number">42</span><div><h2>ทะเบียนฐานกายแบบไม่สมมาตร</h2><p>ไม่บังคับจำนวนให้เท่ากัน: ปิตตะ 4 • วาตะ 6 • เสมหะ 12 • ปถวี 20 รวม 42 รายการ</p></div></div>
+            <div id="ttm-body-registry" class="foundation-body-registry"></div>
+          </section>
+          <section class="card">
+            <div class="section-heading"><span class="section-number">C</span><div><h2>Rule coverage</h2><p>จำนวนกฎตาม domain แยก approved กับ review_required</p></div></div>
+            <div id="ttm-rule-coverage" class="foundation-coverage-table"></div>
+          </section>
+          <section class="card foundation-commercial-gate">
+            <div class="section-heading"><span class="section-number">G</span><div><h2>Commercial readiness gate</h2><p>มีข้อมูลจำนวนมากไม่ได้แปลว่าพร้อมใช้วินิจฉัย</p></div></div>
+            <div class="foundation-gates">
+              <article class="foundation-gate ready"><b>โครงที่ใช้ได้แล้ว</b><ul><li>กฎบริบท 15 domain พร้อม provenance</li><li>พิกัดยาเชื่อมตำรับ–สมุนไพร–claim</li><li>แสดง conflict และ knowledge gap</li><li>แยก context จาก clinical inference</li></ul></article>
+              <article class="foundation-gate pending"><b>ต้องผ่านผู้เชี่ยวชาญ</b><ul><li>ทบทวนกฎที่ถอดจากภาพ/แหล่งรอง</li><li>ลงทะเบียนรูปธาตุ 42 พร้อมชื่อและ citation</li><li>สร้าง finding → hypothesis rules</li><li>เชื่อม state กำเริบ–หย่อน–พิการ</li></ul></article>
+              <article class="foundation-gate locked"><b>ยังล็อกการขายเชิงวินิจฉัย</b><ul><li>กฎคลินิกที่อนุมัติยังไม่ครบ</li><li>review_required ห้ามสร้างข้อสรุป</li><li>พิกัดยาไม่ถูกย้อนเป็น diagnosis</li><li>AI และ ICD/WHO อยู่ปลายทางเท่านั้น</li></ul></article>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</body>
+</html>

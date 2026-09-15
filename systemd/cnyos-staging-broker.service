@@ -1,0 +1,32 @@
+[Unit]
+Description=CNYOS staging OIDC admission broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/cnyos-staging-controller/broker
+Environment=CNYOS_CONTROLLER_WORKFLOW_SHA_FILE=/etc/cnyos-broker/controller-workflow-sha
+Environment=CNYOS_GITHUB_TOKEN_FILE=/etc/cnyos-broker/github-token
+Environment=CNYOS_SUPABASE_ANON_KEY_FILE=/etc/cnyos-broker/supabase-anon-key
+Environment=PATH=/opt/cnyos-validation/node-v24.20.0-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=CNYOS_BROKER_CANDIDATE_VERIFIER=/opt/cnyos-staging-controller/broker/adapters/candidate-verifier.mjs
+Environment=CNYOS_BROKER_ARTIFACT_FETCHER=/opt/cnyos-staging-controller/broker/adapters/artifact-fetcher.mjs
+Environment=CNYOS_BROKER_DEPLOYER=/opt/cnyos-staging-controller/broker/adapters/deployer.mjs
+ExecStart=/opt/cnyos-validation/node-v24.20.0-linux-x64/bin/node /opt/cnyos-staging-controller/broker/server.mjs
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/opt/cnyos-staging-controller /etc/cnyos-broker
+ReadWritePaths=/var/lib/cnyos-broker /srv/cnyos-web-stack
+ProtectHome=true
+InaccessiblePaths=/home /root
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

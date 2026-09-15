@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d2d24">
+  <title>Chananya Pharmacy Workstation</title>
+  <link rel="stylesheet" href="app.css?v=clinical-os-prescription-dispense1">
+  <script src="tenant-config.js?v=white-label1"></script>
+  <script src="tenant-brand.js?v=white-label1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="auth-config.js?v=clinical-os-ia1"></script>
+  <script src="chananya-runtime.js?v=clinical-os-department1"></script>
+  <script src="app-shell.js?v=clinical-os-ia1"></script>
+  <script defer src="searchable-select.js?v=clinical-os-production-atomic1"></script>
+  <script defer src="pharmacy.js?v=clinical-os-prescription-dispense1"></script>
+  <script defer src="pharmacy-sale-selector-fix.js?v=clinical-os-ia1"></script>
+  <script defer src="pharmacy-labels.js?v=clinical-os-ia1"></script>
+  <script defer src="pharmacy-v33-tools.js?v=clinical-os-ia1"></script>
+</head>
+<body data-page="pharmacy">
+  <div id="boot"><div><div class="spinner"></div><h2>กำลังเปิด Pharmacy Workstation</h2><p id="boot-error">กำลังตรวจสอบสิทธิ์</p></div></div>
+  <div id="app" class="app-frame hidden">
+    <aside class="sidebar" aria-label="เมนูระบบ">
+      <a class="brand" href="/"><span class="brand-mark">ช</span><span><strong>CHANANYA</strong><small>Thai Traditional Medicine<br>Clinical & Wellness OS</small></span></a>
+      <nav class="global-nav" id="global-nav"></nav>
+      <div class="sidebar-foot">Medication safety<br>Review → FEFO → Traceability</div>
+    </aside>
+    <button class="sidebar-scrim" data-shell-close aria-label="ปิดเมนู"></button>
+    <div class="workspace">
+      <header class="top">
+        <div class="actions"><button class="btn ghost menu-toggle" data-shell-menu aria-label="เปิดเมนู" aria-expanded="false">☰</button><div class="top-title"><span class="page-kicker">Pharmacy</span><h1>ห้องยาและผลิตภัณฑ์</h1></div></div>
+        <div class="actions"><div class="identity-block"><small id="identity"></small></div><span class="badge" id="role">viewer</span><button class="btn ghost" id="logout">ออกจากระบบ</button></div>
+      </header>
+      <nav class="nav" aria-label="เมนูห้องยา"><button class="active" data-view="rx">ใบสั่งยาจากแพทย์</button><button data-view="walkin">Walk-in</button><button data-view="products">Product Master</button><button data-view="history">ประวัติการจ่าย</button></nav>
+      <main>
+        <section class="view active" id="rx">
+          <div class="hero"><h2>Prescription Queue</h2><p>Review → Prepare → Dispense FEFO → Print label → Submit Billing</p></div>
+          <div class="grid2 space-top-md">
+            <section class="card"><div class="section-heading"><span class="section-number">Rx</span><div><h2>คิวใบสั่งยา</h2><p>ข้อมูลผู้รับบริการอยู่เฉพาะ Clinical และ Pharmacy</p></div></div><div id="rx-list" class="list"></div></section>
+            <section class="card"><div class="section-heading"><span class="section-number">PR</span><div><h2>ขอผลิตเมื่อ Stock ไม่พอ</h2><p>ส่งเฉพาะ Product/Quantity ไป Production โดยไม่ส่งชื่อหรือ HN</p></div></div>
+              <form id="production-request-form" class="form">
+                <label class="full">Dispensing order<select id="production-dispensing" required></select></label>
+                <label class="full">รายการจากใบสั่งยา<select id="production-item" required></select></label>
+                <label>จำนวนที่ต้องผลิต<input id="production-qty" type="number" min="0.0001" step="0.0001" required></label>
+                <label>หน่วย Stock<input id="production-unit" readonly required></label>
+                <small class="muted full" id="production-unit-note">เลือก Product เพื่อดูหน่วยจาก Product Master</small>
+                <label>Priority<select id="production-priority"><option value="normal">normal</option><option value="urgent">urgent</option><option value="critical">critical</option></select></label>
+                <label>Required by<input id="production-required" type="datetime-local"></label>
+                <label class="full">เหตุผล<textarea id="production-reason" placeholder="Out of stock / stock not enough">out_of_stock</textarea></label>
+                <button class="btn primary full">ส่งคำขอผลิตและบันทึก Audit</button>
+              </form>
+            </section>
+          </div>
+          <section class="card"><h3>สถานะคำขอผลิตจาก Pharmacy</h3><div id="production-request-list" class="list"></div></section>
+        </section>
+
+        <section class="view" id="walkin">
+          <div class="hero"><h2>Walk-in General Medicine</h2><p>ซักอาการขั้นต่ำ ตรวจการแพ้/ข้อห้าม ให้คำแนะนำ และจ่ายตาม FEFO</p></div>
+          <div class="grid2 space-top-md">
+            <section class="card">
+              <div class="section-heading"><span class="section-number">1</span><div><h2>เปิดรายการขาย</h2><p>บันทึกบริบทและ pharmacist assessment ก่อนเลือกยา</p></div></div>
+              <form id="sale-form" class="form">
+                <label class="full">ผู้รับบริการในระบบ (ถ้ามี)<select id="sale-patient"><option value="">Walk-in / ยังไม่ผูก HN</option></select></label>
+                <label>ชื่อลูกค้า<input id="customer-name"></label><label>โทรศัพท์<input id="customer-phone"></label>
+                <label class="full">อาการสำคัญ<textarea id="symptoms" required></textarea></label><label class="full">ประวัติแพ้ยา/สมุนไพร<textarea id="allergies"></textarea></label>
+                <label class="full">ยาที่ใช้อยู่<textarea id="current-meds"></textarea></label><label class="full">ข้อห้าม/Red flags<textarea id="contra"></textarea></label>
+                <label class="full">Pharmacist assessment<textarea id="assessment" required></textarea></label><label class="full">คำแนะนำ<textarea id="advice"></textarea></label>
+                <button class="btn primary full">สร้างรายการ Walk-in</button>
+              </form>
+            </section>
+            <section class="card">
+              <div class="section-heading"><span class="section-number">2</span><div><h2>เพิ่มยา</h2><p>ผูกยากับรายการขายก่อน Review และ Dispense</p></div></div>
+              <form id="item-form" class="form">
+                <label class="full">รายการขาย<select id="item-sale" required></select></label><div id="selected-sale-banner" class="full badge" hidden></div>
+                <label class="full">ยา/ผลิตภัณฑ์<select id="item-product" required></select></label>
+                <label>จำนวน<input id="item-qty" type="number" min="0.0001" step="0.0001" required></label><label>หน่วยจาก Product Master<input id="item-unit" readonly></label>
+                <label>ราคาต่อหน่วย<input id="item-price" type="number" min="0" step="0.01" required></label><label>ขนาด/วิธีใช้<input id="item-dose"></label>
+                <label>ความถี่<input id="item-frequency"></label><label>ระยะเวลา<input id="item-duration"></label>
+                <label class="full">คำเตือน/วิธีใช้<textarea id="item-instructions"></textarea></label><button class="btn primary full">เพิ่มรายการยา</button>
+              </form>
+            </section>
+          </div>
+          <section class="card"><h3>รายการ Walk-in ที่กำลังดำเนินการ</h3><div id="walkin-list" class="list"></div></section>
+        </section>
+
+        <section class="view" id="products">
+          <div class="hero"><h2>Product Master</h2><p>ฐานสินค้ากลางของ Prescription, Pharmacy, Inventory และ Production — ปิดใช้งานแทนการลบเพื่อรักษา traceability</p></div>
+          <div class="grid2 space-top-md">
+            <section class="card">
+              <h3>เพิ่ม / แก้ไขผลิตภัณฑ์</h3>
+              <form id="product-form" class="form"><input type="hidden" id="product-id">
+                <label>SKU<input id="product-sku" required></label><label>ชื่อไทย<input id="product-name-th" required></label>
+                <label>ชื่ออังกฤษ<input id="product-name-en"></label><label>ประเภท<input id="product-category" placeholder="medicine / herb / raw_material / packaging" required></label>
+                <label>Dosage form<input id="product-dosage-form"></label><label>หน่วยซื้อ<input id="product-purchase-unit"></label>
+                <label>หน่วย Stock<input id="product-stock-unit" required></label><label>หน่วยจ่าย<input id="product-dispense-unit" required></label>
+                <label>Conversion factor<input id="product-conversion" type="number" min="0.000001" step="0.000001" value="1" required></label><label>Standard cost<input id="product-cost" type="number" min="0" step="0.01" value="0"></label>
+                <label>Min stock<input id="product-min-stock" type="number" min="0" step="0.0001" value="0"></label><label>Reorder level<input id="product-reorder" type="number" min="0" step="0.0001" value="0"></label>
+                <button class="btn primary">บันทึกผลิตภัณฑ์</button><button class="btn ghost" id="product-cancel" type="button">ล้างฟอร์ม</button>
+              </form>
+            </section>
+            <section class="card"><h3>รายการผลิตภัณฑ์</h3><label>ค้นหา<input id="product-master-search" placeholder="SKU / ชื่อ / ประเภท"></label><label class="check-row space-top-xs"><input id="show-inactive-products" type="checkbox"> แสดงรายการที่ปิดใช้งาน</label><div id="product-list" class="list space-top-sm"></div></section>
+          </div>
+        </section>
+
+        <section class="view" id="history"><section class="card"><div class="section-heading"><span class="section-number">H</span><div><h2>ประวัติการขายยา Walk-in</h2><p>รายการย้อนหลังและสถานะการจ่าย</p></div></div><div id="history-list" class="list"></div></section></section>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
