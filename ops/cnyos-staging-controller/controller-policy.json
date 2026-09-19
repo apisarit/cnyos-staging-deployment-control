@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "policyId": "cnyos-staging-protected-controller-v1",
+  "controller": {
+    "repository": "apisarit/cnyos-staging-deployment-control",
+    "protectedRef": "refs/heads/main",
+    "releaseWorkflowPath": ".github/workflows/cnyos-staging-release.yml",
+    "rollbackWorkflowPath": ".github/workflows/cnyos-staging-rollback-watchdog.yml"
+  },
+  "sourceRepository": "apisarit/chananya-clinical-wellness-os",
+  "githubReleaseBoundary": {
+    "apiOrigin": "https://api.github.com",
+    "webOrigin": "https://github.com",
+    "sourceRepository": "apisarit/chananya-clinical-wellness-os",
+    "pr36Number": 36,
+    "allowedPr36States": [
+      "open_draft_unapproved",
+      "open_draft_review_only"
+    ],
+    "maximumEvidenceAgeMinutes": 5,
+    "maximumResponseBytes": 1048576,
+    "reviewsPerPage": 100,
+    "maximumReviewPages": 10
+  },
+  "target": {
+    "environment": "cnyos-staging",
+    "netlifySiteId": "7da5e39e-580d-44f1-8623-605313e2fb2b",
+    "netlifySiteName": "cnyos",
+    "netlifyOrigin": "https://cnyos.netlify.app",
+    "supabaseProjectRef": "hsmnjwxurlmsizndjlun",
+    "supabaseOrigin": "https://hsmnjwxurlmsizndjlun.supabase.co",
+    "databaseSystemIdentifier": "7666007964130682852",
+    "deploymentId": "chananya-clinical-staging",
+    "clinicId": "00000000-0000-4000-8000-00000000a001",
+    "clinicCode": "CHANANYA-STG",
+    "qrIssuer": "CHANANYA-STG",
+    "authRedirectOrigin": "https://cnyos.netlify.app"
+  },
+  "productionDenylist": {
+    "netlifySiteId": "f1a31624-f90b-4d72-be3d-e91b7e2b2f38",
+    "netlifyOrigin": "https://chananya.netlify.app",
+    "supabaseProjectRef": "qptxnrldzzinlcabudjv",
+    "supabaseOrigin": "https://qptxnrldzzinlcabudjv.supabase.co",
+    "clinicId": "00000000-0000-0000-0000-000000000001",
+    "clinicCode": "CHANANYA",
+    "qrIssuer": "CHANANYA"
+  },
+  "functionEnvironment": {
+    "SUPABASE_URL": "https://hsmnjwxurlmsizndjlun.supabase.co",
+    "CNYOS_OWNER_EXPECTED_PROJECT_REF": "hsmnjwxurlmsizndjlun",
+    "BACKUP_EXPECTED_SUPABASE_PROJECT_REF": "hsmnjwxurlmsizndjlun",
+    "CNYOS_RUNTIME_EXPECTED_CLINIC_ID": "00000000-0000-4000-8000-00000000a001",
+    "CNYOS_ACCOUNT_CLINIC_ID": "00000000-0000-4000-8000-00000000a001",
+    "CNYOS_ACCOUNT_CLINIC_CODE": "CHANANYA-STG",
+    "CNYOS_OWNER_CLINIC_CODES": "CHANANYA-STG",
+    "PATIENT_QR_ISSUER": "CHANANYA-STG",
+    "CNYOS_OWNER_EXPECTED_NETLIFY_SITE_ID": "7da5e39e-580d-44f1-8623-605313e2fb2b",
+    "BACKUP_EXPECTED_NETLIFY_SITE_ID": "7da5e39e-580d-44f1-8623-605313e2fb2b",
+    "CNYOS_OWNER_EXPECTED_SITE_ORIGIN": "https://cnyos.netlify.app",
+    "BACKUP_EXPECTED_SITE_ORIGIN": "https://cnyos.netlify.app",
+    "BACKUP_ENVIRONMENT": "staging",
+    "BACKUP_DEPLOYMENT_ID": "chananya-clinical-staging",
+    "BACKUP_PRODUCTION_SUPABASE_URL": "https://qptxnrldzzinlcabudjv.supabase.co",
+    "BACKUP_ENABLED": "false",
+    "CNYOS_PLATFORM_CONTROL_ENABLED": "false",
+    "CNYOS_OWNER_DRIVE_ENABLED": "false",
+    "RESTORE_SOURCE_API_ENABLED": "false",
+    "GOOGLE_DRIVE_SERVICE_ACCOUNT_ALLOW_RESTORE_TEST_DIRECT_JSON": "false",
+    "CNYOS_EVIDENCE_PUBMED_ENABLED": "false",
+    "CNYOS_OWNER_CONTROL_ENABLED": "false"
+  },
+  "databaseEvidence": {
+    "maximumAgeMinutes": 30,
+    "inventoryBaseline": {
+      "schemaVersion": 1,
+      "baselineId": "cnyos-staging-acl-inventory-2026-09-08-v1",
+      "observerSchemaVersion": 2,
+      "supabaseProjectRef": "hsmnjwxurlmsizndjlun",
+      "databaseSystemIdentifier": "7666007964130682852",
+      "counts": {
+        "datasetCount": 25,
+        "publicRoutineCount": 147,
+        "securityDefinerCount": 141,
+        "triggerCount": 173,
+        "eventTriggerCount": 7
+      },
+      "sha256": "c15814fda8547e50620c1a7bb2fda39865fdb5d9f77b93e88fb3b8122b42344d"
+    }
+  },
+  "staticArtifactReproducibility": {
+    "contractRequired": true,
+    "networkDisabledDuringBuild": true,
+    "hermeticBuilderImageDigest": "__PINNED_HERMETIC_STATIC_BUILDER_IMAGE_DIGEST__",
+    "stagingConfigSha256": "__REVIEWED_CNYOS_PUBLIC_STAGING_CONFIG_SHA256__",
+    "productionDenylistConfigSha256": "__REVIEWED_CNYOS_PRODUCTION_DENYLIST_CONFIG_SHA256__"
+  },
+  "authorization": {
+    "maximumLifetimeMinutes": 30,
+    "minimumNonceBytes": 32,
+    "requiredSignatureRoles": [
+      "independent_security_reviewer",
+      "managed_platform_risk_owner"
+    ]
+  },
+  "publishing": {
+    "netlifyCliVersion": "__AUDITED_NETLIFY_CLI_VERSION__",
+    "backupEnabledRequiredValue": "false",
+    "requireFreshDeployId": true,
+    "functionByteAttestationAvailable": false,
+    "minimumExclusiveLeaseMinutes": 45,
+    "exclusivePublisherContractRequired": true,
+    "privateDraftLifecycleContractRequired": true,
+    "controlFileBehaviorContractRequired": true
+  },
+  "privateDraftAccessBoundary": {
+    "origin": "__REVIEWED_PRIVATE_DRAFT_ACCESS_BOUNDARY_ORIGIN__",
+    "policyId": "__REVIEWED_PRIVATE_DRAFT_ACCESS_BOUNDARY_POLICY_ID__",
+    "policySha256": "__REVIEWED_PRIVATE_DRAFT_ACCESS_BOUNDARY_POLICY_SHA256__"
+  },
+  "rollback": {
+    "required": true,
+    "restoreOnlyControllerOwnedDeploy": true,
+    "externalWatchdogRequired": true,
+    "noninteractiveEnvironmentRequired": true,
+    "dedicatedStagingOnlyPrincipalRequired": true
+  },
+  "externalReconciliationBroker": {
+    "origin": "__REVIEWED_CNYOS_STAGING_PUBLISH_RECONCILIATION_BROKER_ORIGIN__",
+    "operationPath": "__REVIEWED_CNYOS_STAGING_PUBLISH_RECONCILIATION_OPERATION_PATH__",
+    "operationDomain": "cnyos_staging_publish_reconciliation",
+    "policyId": "__REVIEWED_CNYOS_STAGING_RECONCILIATION_POLICY_ID__",
+    "policySha256": "__REVIEWED_CNYOS_STAGING_RECONCILIATION_POLICY_SHA256__",
+    "signingKeyId": "__REVIEWED_CNYOS_STAGING_PUBLISH_RECONCILIATION_SIGNING_KEY_ID__",
+    "signingPublicKeyPem": "__REVIEWED_CNYOS_STAGING_PUBLISH_RECONCILIATION_SIGNING_PUBLIC_KEY_PEM__",
+    "signingKeySpkiSha256": "__REVIEWED_CNYOS_STAGING_PUBLISH_RECONCILIATION_SIGNING_KEY_SPKI_SHA256__",
+    "oidcAudience": "__REVIEWED_CNYOS_STAGING_PUBLISH_RECONCILIATION_OIDC_AUDIENCE__",
+    "maximumEvidenceAgeMinutes": 10,
+    "maximumResponseBytes": 65536
+  },
+  "draftLifecycleBroker": {
+    "origin": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_BROKER_ORIGIN__",
+    "operationPath": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_OPERATION_PATH__",
+    "operationDomain": "cnyos_staging_draft_lifecycle",
+    "policyId": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_POLICY_ID__",
+    "policySha256": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_POLICY_SHA256__",
+    "signingKeyId": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_SIGNING_KEY_ID__",
+    "signingPublicKeyPem": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_SIGNING_PUBLIC_KEY_PEM__",
+    "signingKeySpkiSha256": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_SIGNING_KEY_SPKI_SHA256__",
+    "oidcAudience": "__REVIEWED_CNYOS_STAGING_DRAFT_LIFECYCLE_OIDC_AUDIENCE__",
+    "maximumEvidenceAgeMinutes": 10,
+    "maximumResponseBytes": 65536
+  },
+  "rollbackPrincipalMembershipBroker": {
+    "origin": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_BROKER_ORIGIN__",
+    "operationPath": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_OPERATION_PATH__",
+    "operationDomain": "cnyos_staging_rollback_principal_membership",
+    "policyId": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_POLICY_ID__",
+    "policySha256": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_POLICY_SHA256__",
+    "signingKeyId": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_SIGNING_KEY_ID__",
+    "signingPublicKeyPem": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_SIGNING_PUBLIC_KEY_PEM__",
+    "signingKeySpkiSha256": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_SIGNING_KEY_SPKI_SHA256__",
+    "oidcAudience": "__REVIEWED_CNYOS_STAGING_ROLLBACK_PRINCIPAL_MEMBERSHIP_OIDC_AUDIENCE__",
+    "maximumEvidenceAgeMinutes": 10,
+    "maximumResponseBytes": 65536
+  },
+  "rollbackAttestationBroker": {
+    "origin": "__REVIEWED_ROLLBACK_ATTESTATION_BROKER_ORIGIN__",
+    "policyId": "__REVIEWED_ROLLBACK_ATTESTATION_BROKER_POLICY_ID__",
+    "policySha256": "__REVIEWED_ROLLBACK_ATTESTATION_BROKER_POLICY_SHA256__",
+    "receiptSigningKeyId": "__REVIEWED_ROLLBACK_ATTESTATION_RECEIPT_KEY_ID__",
+    "receiptSigningPublicKeyPem": "__REVIEWED_ROLLBACK_ATTESTATION_RECEIPT_PUBLIC_KEY_PEM__",
+    "receiptSigningSpkiSha256": "__REVIEWED_ROLLBACK_ATTESTATION_RECEIPT_SPKI_SHA256__",
+    "oidcAudience": "__REVIEWED_ROLLBACK_ATTESTATION_OIDC_AUDIENCE__",
+    "maximumReceiptAgeMinutes": 10,
+    "minimumRetentionDays": 365
+  },
+  "netlifyAuthorityBoundary": {
+    "origin": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_BROKER_ORIGIN__",
+    "operationPath": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_OPERATION_PATH__",
+    "operationDomain": "cnyos_staging_netlify_authority",
+    "policyId": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_POLICY_ID__",
+    "policySha256": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_POLICY_SHA256__",
+    "signingKeyId": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_SIGNING_KEY_ID__",
+    "signingPublicKeyPem": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_SIGNING_PUBLIC_KEY_PEM__",
+    "signingKeySpkiSha256": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_SIGNING_KEY_SPKI_SHA256__",
+    "oidcAudience": "__REVIEWED_CNYOS_STAGING_NETLIFY_AUTHORITY_OIDC_AUDIENCE__",
+    "maximumAgeMinutes": 10,
+    "maximumResponseBytes": 262144
+  },
+  "productionAuthorization": false,
+  "runtimeEvidenceBroker": {
+    "origin": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_BROKER_ORIGIN__",
+    "operationPath": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_OPERATION_PATH__",
+    "operationDomain": "cnyos_staging_runtime_boundary",
+    "policyId": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_POLICY_ID__",
+    "policySha256": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_POLICY_SHA256__",
+    "signingKeyId": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_SIGNING_KEY_ID__",
+    "signingPublicKeyPem": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_SIGNING_PUBLIC_KEY_PEM__",
+    "signingKeySpkiSha256": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_SIGNING_KEY_SPKI_SHA256__",
+    "oidcAudience": "__REVIEWED_CNYOS_STAGING_RUNTIME_EVIDENCE_OIDC_AUDIENCE__",
+    "maximumEvidenceAgeMinutes": 10,
+    "maximumResponseBytes": 1048576
+  },
+  "runtimeEvidenceBoundary": {
+    "maximumProofAgeMinutes": 10,
+    "minimumRetentionDays": 365,
+    "handlerVerifierImageDigest": "__REVIEWED_CNYOS_STAGING_HANDLER_VERIFIER_IMAGE_DIGEST__",
+    "handlerVerifierSourceSha256": "__REVIEWED_CNYOS_STAGING_HANDLER_VERIFIER_SOURCE_SHA256__",
+    "handlerVerifierNodeVersion": "24.20.0",
+    "functionSecretBindings": [
+      {
+        "name": "__REVIEWED_CNYOS_STAGING_FUNCTION_SECRET_NAME__",
+        "provider": "__REVIEWED_CNYOS_STAGING_FUNCTION_SECRET_PROVIDER__",
+        "resourceId": "__REVIEWED_CNYOS_STAGING_FUNCTION_SECRET_RESOURCE_ID__"
+      }
+    ],
+    "platformReservedEnvironmentNames": ["__REVIEWED_CNYOS_STAGING_RESERVED_ENVIRONMENT_NAMES__"],
+    "browserEnvironmentAllowlist": [],
+    "egressPolicyId": "__REVIEWED_CNYOS_STAGING_EGRESS_POLICY_ID__",
+    "egressPolicyRevision": "__REVIEWED_CNYOS_STAGING_EGRESS_POLICY_REVISION__",
+    "allowedEgressOrigins": []
+  },
+  "realPatientDataAuthorized": false
+}

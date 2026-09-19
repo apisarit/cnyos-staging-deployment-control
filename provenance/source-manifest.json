@@ -1,0 +1,1014 @@
+{
+  "kind": "cnyos-inert-offline-source-manifest",
+  "revision": 3,
+  "sourceAllowlist": "work/controller-review-allowlist-2026-09-10-r2.json",
+  "sourceGitHead": "4e98152f91c65bb7089222145b04620ba919306a",
+  "provenance": "Dirty engineering working-tree bytes, including existing and new changes; not a committed release snapshot.",
+  "destinationRepository": "apisarit/cnyos-staging-deployment-control",
+  "activationAuthorized": false,
+  "fileCount": 99,
+  "files": [
+    {
+      "sourcePath": "admin.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/admin.html",
+      "bytes": 8922,
+      "inputSha256": "1f26d6b9804e7f012f40bf6e235d865870ce5862caf5558132353f07b4b43abb",
+      "outputSha256": "1f26d6b9804e7f012f40bf6e235d865870ce5862caf5558132353f07b4b43abb",
+      "mode": "100644",
+      "inputBytes": 8922,
+      "outputBytes": 8922
+    },
+    {
+      "sourcePath": "admin.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/admin.js",
+      "bytes": 9085,
+      "inputSha256": "9512d7eee7068b0bfba20a0f4a90bbd5b66c7f3da6a7c676479cd7dfbad7f818",
+      "outputSha256": "9512d7eee7068b0bfba20a0f4a90bbd5b66c7f3da6a7c676479cd7dfbad7f818",
+      "mode": "100644",
+      "inputBytes": 9085,
+      "outputBytes": 9085
+    },
+    {
+      "sourcePath": "app-shell.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/app-shell.js",
+      "bytes": 5495,
+      "inputSha256": "e0aff51fb6f2adf6dea4d835e0da4092cffa53c1040293523261d15cddf60884",
+      "outputSha256": "e0aff51fb6f2adf6dea4d835e0da4092cffa53c1040293523261d15cddf60884",
+      "mode": "100644",
+      "inputBytes": 5495,
+      "outputBytes": 5495
+    },
+    {
+      "sourcePath": "appointments.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/appointments.html",
+      "bytes": 6675,
+      "inputSha256": "dd555a44316c81ad8261e43e5df9599b43f4b4e917e8cebfdf2ded171383f255",
+      "outputSha256": "dd555a44316c81ad8261e43e5df9599b43f4b4e917e8cebfdf2ded171383f255",
+      "mode": "100644",
+      "inputBytes": 6675,
+      "outputBytes": 6675
+    },
+    {
+      "sourcePath": "appointments.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/appointments.js",
+      "bytes": 11065,
+      "inputSha256": "6cf885fe4dbc11ef03d2315408364265b094065b78e3331de3a10ba7a406f14e",
+      "outputSha256": "6cf885fe4dbc11ef03d2315408364265b094065b78e3331de3a10ba7a406f14e",
+      "mode": "100644",
+      "inputBytes": 11065,
+      "outputBytes": 11065
+    },
+    {
+      "sourcePath": "chananya-runtime.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/chananya-runtime.js",
+      "bytes": 10445,
+      "inputSha256": "d37cf5c6ced064057c7ae0e278f6a057213470f812b79ec49b68d6318f7b8b11",
+      "outputSha256": "d37cf5c6ced064057c7ae0e278f6a057213470f812b79ec49b68d6318f7b8b11",
+      "mode": "100644",
+      "inputBytes": 10445,
+      "outputBytes": 10445
+    },
+    {
+      "sourcePath": "check-in.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/check-in.html",
+      "bytes": 9180,
+      "inputSha256": "59d354cc3e90584bc1af3d15a304cc2dd0faeeda3a4e433180003ae8f886a97d",
+      "outputSha256": "59d354cc3e90584bc1af3d15a304cc2dd0faeeda3a4e433180003ae8f886a97d",
+      "mode": "100644",
+      "inputBytes": 9180,
+      "outputBytes": 9180
+    },
+    {
+      "sourcePath": "check-in.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/check-in.js",
+      "bytes": 13213,
+      "inputSha256": "7bed759fd514596ce1fbed97649fd82d08d6cb21a45d6551e15c63fc77a46cbe",
+      "outputSha256": "7bed759fd514596ce1fbed97649fd82d08d6cb21a45d6551e15c63fc77a46cbe",
+      "mode": "100644",
+      "inputBytes": 13213,
+      "outputBytes": 13213
+    },
+    {
+      "sourcePath": "clinical-v3.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/clinical-v3.html",
+      "bytes": 29909,
+      "inputSha256": "cd1eea6dcb0048200f8e07ad6a62a6bd4a6959ce792267baafd01dc861f58fb1",
+      "outputSha256": "cd1eea6dcb0048200f8e07ad6a62a6bd4a6959ce792267baafd01dc861f58fb1",
+      "mode": "100644",
+      "inputBytes": 29909,
+      "outputBytes": 29909
+    },
+    {
+      "sourcePath": "clinical-v3.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/clinical-v3.js",
+      "bytes": 19900,
+      "inputSha256": "c021cef1ea665df6ba9163a115521bab23bf09d0673e528967eef564e1c98354",
+      "outputSha256": "c021cef1ea665df6ba9163a115521bab23bf09d0673e528967eef564e1c98354",
+      "mode": "100644",
+      "inputBytes": 19900,
+      "outputBytes": 19900
+    },
+    {
+      "sourcePath": "foundation.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/foundation.html",
+      "bytes": 20606,
+      "inputSha256": "4d65011d3522beea07e192041cac6706e88e1d958424f3902eed62ea926c9f38",
+      "outputSha256": "4d65011d3522beea07e192041cac6706e88e1d958424f3902eed62ea926c9f38",
+      "mode": "100644",
+      "inputBytes": 20606,
+      "outputBytes": 20606
+    },
+    {
+      "sourcePath": "foundation.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/foundation.js",
+      "bytes": 37273,
+      "inputSha256": "771f19a20b102540635f52c966a16a96e0a02d7f70804177208ca78a2b5055fb",
+      "outputSha256": "771f19a20b102540635f52c966a16a96e0a02d7f70804177208ca78a2b5055fb",
+      "mode": "100644",
+      "inputBytes": 37273,
+      "outputBytes": 37273
+    },
+    {
+      "sourcePath": "index.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/index.html",
+      "bytes": 13406,
+      "inputSha256": "de8e7f3a01e7814b8d68753a8ed05a6cc4da67c92456eaadfbfb5d23e48c8d17",
+      "outputSha256": "de8e7f3a01e7814b8d68753a8ed05a6cc4da67c92456eaadfbfb5d23e48c8d17",
+      "mode": "100644",
+      "inputBytes": 13406,
+      "outputBytes": 13406
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/README.md",
+      "path": "ops/cnyos-staging-controller/README.md",
+      "bytes": 56696,
+      "inputSha256": "ce31315b9b4716dca71b7c0eda7946ad50ee15373a316e6bdb6ec9707feaabd3",
+      "outputSha256": "ce31315b9b4716dca71b7c0eda7946ad50ee15373a316e6bdb6ec9707feaabd3",
+      "mode": "100644",
+      "inputBytes": 56696,
+      "outputBytes": 56696
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/approver-registry.template.json",
+      "path": "ops/cnyos-staging-controller/approver-registry.template.json",
+      "bytes": 769,
+      "inputSha256": "f58094a90653a31a0ca5367e4a53efbdefd2dc3cace9b6df7398ded4135162e5",
+      "outputSha256": "f58094a90653a31a0ca5367e4a53efbdefd2dc3cace9b6df7398ded4135162e5",
+      "mode": "100644",
+      "inputBytes": 769,
+      "outputBytes": 769
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/controller-policy.json",
+      "path": "ops/cnyos-staging-controller/controller-policy.json",
+      "bytes": 11176,
+      "inputSha256": "b6d7070b498fc71435aae50e47db6ac3db8534b4ec6766dd9c5a102263d6f810",
+      "outputSha256": "b6d7070b498fc71435aae50e47db6ac3db8534b4ec6766dd9c5a102263d6f810",
+      "mode": "100644",
+      "inputBytes": 11176,
+      "outputBytes": 11176
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/package-lock.json",
+      "path": "ops/cnyos-staging-controller/package-lock.json",
+      "bytes": 34746,
+      "inputSha256": "548f90ad43dc8ab6d2839009dc104fbaaeab5279c9923064303ff8fee52c971b",
+      "outputSha256": "548f90ad43dc8ab6d2839009dc104fbaaeab5279c9923064303ff8fee52c971b",
+      "mode": "100644",
+      "inputBytes": 34746,
+      "outputBytes": 34746
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/package.json",
+      "path": "ops/cnyos-staging-controller/package.json",
+      "bytes": 1991,
+      "inputSha256": "ecf5ec308068e8523b1478f64f24551ff71d1c21bbe202bbe704821197ec725d",
+      "outputSha256": "ecf5ec308068e8523b1478f64f24551ff71d1c21bbe202bbe704821197ec725d",
+      "mode": "100644",
+      "inputBytes": 1991,
+      "outputBytes": 1991
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs",
+      "bytes": 5537,
+      "inputSha256": "b42d316723d53aa5b8e12cf7ab2e606b1a78b5a80d5debc78d1c521d71610b81",
+      "outputSha256": "b42d316723d53aa5b8e12cf7ab2e606b1a78b5a80d5debc78d1c521d71610b81",
+      "mode": "100644",
+      "inputBytes": 5537,
+      "outputBytes": 5537
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-authenticated-uat.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-authenticated-uat.mjs",
+      "bytes": 5201,
+      "inputSha256": "037f491ba097ebe2de9f7d13462b5c1611a979e3a308c4fceffbc28263a34afb",
+      "outputSha256": "037f491ba097ebe2de9f7d13462b5c1611a979e3a308c4fceffbc28263a34afb",
+      "mode": "100644",
+      "inputBytes": 5201,
+      "outputBytes": 5201
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-function-bundle.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-function-bundle.mjs",
+      "bytes": 35807,
+      "inputSha256": "99fb7f10b69eaebc81fc4111f8ec4e707725253ca5dd644515139201e51fad70",
+      "outputSha256": "99fb7f10b69eaebc81fc4111f8ec4e707725253ca5dd644515139201e51fad70",
+      "mode": "100644",
+      "inputBytes": 35807,
+      "outputBytes": 35807
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-static-reproducibility.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-static-reproducibility.mjs",
+      "bytes": 29854,
+      "inputSha256": "7fa5540d6059bce129e282f2fc59c9029c0fbeee28bb9009b203ffb7bc481496",
+      "outputSha256": "7fa5540d6059bce129e282f2fc59c9029c0fbeee28bb9009b203ffb7bc481496",
+      "mode": "100644",
+      "inputBytes": 29854,
+      "outputBytes": 29854
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-uat-access-observations.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-access-observations.mjs",
+      "bytes": 4674,
+      "inputSha256": "a032019917731bf0babc96db3a138670c1f0f1f44146881b96fd888f0d47df1b",
+      "outputSha256": "a032019917731bf0babc96db3a138670c1f0f1f44146881b96fd888f0d47df1b",
+      "mode": "100644",
+      "inputBytes": 4674,
+      "outputBytes": 4674
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-uat-browser-matrix.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-matrix.mjs",
+      "bytes": 20608,
+      "inputSha256": "c29c8c062ba00d22de502c2c8ce89d2a23a8a06eb48bc2d5d7833de91d0538e3",
+      "outputSha256": "c29c8c062ba00d22de502c2c8ce89d2a23a8a06eb48bc2d5d7833de91d0538e3",
+      "mode": "100644",
+      "inputBytes": 20608,
+      "outputBytes": 20608
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-uat-browser-read-policy.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-read-policy.mjs",
+      "bytes": 16863,
+      "inputSha256": "6fafba5cc5225b4d7e8e7fccb898bc2c8a1ec0b37e409cc126b035f092316080",
+      "outputSha256": "6fafba5cc5225b4d7e8e7fccb898bc2c8a1ec0b37e409cc126b035f092316080",
+      "mode": "100644",
+      "inputBytes": 16863,
+      "outputBytes": 16863
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-uat-browser-transport.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-browser-transport.mjs",
+      "bytes": 32185,
+      "inputSha256": "5e07765c98101d36616557e571e8650c7a4330b5726d2e31232fa5907b134760",
+      "outputSha256": "5e07765c98101d36616557e571e8650c7a4330b5726d2e31232fa5907b134760",
+      "mode": "100644",
+      "inputBytes": 32185,
+      "outputBytes": 32185
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-uat-evidence-publication.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-evidence-publication.mjs",
+      "bytes": 6057,
+      "inputSha256": "3a2bd4d62daa37544c6ce7c410bf8eeb041475c232190ad698b742021a3ea30e",
+      "outputSha256": "3a2bd4d62daa37544c6ce7c410bf8eeb041475c232190ad698b742021a3ea30e",
+      "mode": "100644",
+      "inputBytes": 6057,
+      "outputBytes": 6057
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/create-function-comparison-handoff.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/create-function-comparison-handoff.mjs",
+      "bytes": 10920,
+      "inputSha256": "38349d36c50a16e94db349774b144ddaf360e0eca087451052a86e7e443c8ed2",
+      "outputSha256": "38349d36c50a16e94db349774b144ddaf360e0eca087451052a86e7e443c8ed2",
+      "mode": "100644",
+      "inputBytes": 10920,
+      "outputBytes": 10920
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/create-netlify-draft-with-durable-intent.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/create-netlify-draft-with-durable-intent.mjs",
+      "bytes": 18734,
+      "inputSha256": "7335e6b0b07998cf84dc72b8f668ca032064c5a3607ff493457474825cbb6975",
+      "outputSha256": "7335e6b0b07998cf84dc72b8f668ca032064c5a3607ff493457474825cbb6975",
+      "mode": "100644",
+      "inputBytes": 18734,
+      "outputBytes": 18734
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/create-producer-bundle.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/create-producer-bundle.mjs",
+      "bytes": 35901,
+      "inputSha256": "d4145aa762115ce320aeab4d4456926e1480ae9e4f414c6a6f433e22ea3a8a3d",
+      "outputSha256": "d4145aa762115ce320aeab4d4456926e1480ae9e4f414c6a6f433e22ea3a8a3d",
+      "mode": "100644",
+      "inputBytes": 35901,
+      "outputBytes": 35901
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/deposit-rollback-attestation.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/deposit-rollback-attestation.mjs",
+      "bytes": 48840,
+      "inputSha256": "0e076be993bc3ff225314bc929ced602032d62a64a6e0e16b6e46f40a908279d",
+      "outputSha256": "0e076be993bc3ff225314bc929ced602032d62a64a6e0e16b6e46f40a908279d",
+      "mode": "100644",
+      "inputBytes": 48840,
+      "outputBytes": 48840
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/finalize-evidence.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/finalize-evidence.mjs",
+      "bytes": 54226,
+      "inputSha256": "1af40d8a812a6ec0031ee76c172df48fcf71d2520985e1a69cc8027a31bc95be",
+      "outputSha256": "1af40d8a812a6ec0031ee76c172df48fcf71d2520985e1a69cc8027a31bc95be",
+      "mode": "100644",
+      "inputBytes": 54226,
+      "outputBytes": 54226
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/materialize-function-recipe-input.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/materialize-function-recipe-input.mjs",
+      "bytes": 9772,
+      "inputSha256": "a9ea4874963b5208361ee9d69382f406633b8e622a4ed9ec84b18bed701ee7c3",
+      "outputSha256": "a9ea4874963b5208361ee9d69382f406633b8e622a4ed9ec84b18bed701ee7c3",
+      "mode": "100644",
+      "inputBytes": 9772,
+      "outputBytes": 9772
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/netlify-evidence.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/netlify-evidence.mjs",
+      "bytes": 142613,
+      "inputSha256": "8db06dceae9bc021e232c07e944fa6515487a025972e8cea90df97f94f74f64c",
+      "outputSha256": "8db06dceae9bc021e232c07e944fa6515487a025972e8cea90df97f94f74f64c",
+      "mode": "100644",
+      "inputBytes": 142613,
+      "outputBytes": 142613
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/policy.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/policy.mjs",
+      "bytes": 21931,
+      "inputSha256": "9743ededfd8a1dde2b09d8abddee2fa6884d4cce12d082768abbdec5c3e47152",
+      "outputSha256": "9743ededfd8a1dde2b09d8abddee2fa6884d4cce12d082768abbdec5c3e47152",
+      "mode": "100644",
+      "inputBytes": 21931,
+      "outputBytes": 21931
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/private-draft-access-boundary.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/private-draft-access-boundary.mjs",
+      "bytes": 35295,
+      "inputSha256": "057e88082fdf070ac7cc603ecc82c3e7789991a466874f0df2ab54ec86ed10ef",
+      "outputSha256": "057e88082fdf070ac7cc603ecc82c3e7789991a466874f0df2ab54ec86ed10ef",
+      "mode": "100644",
+      "inputBytes": 35295,
+      "outputBytes": 35295
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/reconcile-netlify-release-state.mjs",
+      "bytes": 132934,
+      "inputSha256": "9233991885a67971681acf567625b8f26d2149739d7dacae565c45c0b2cc7cb3",
+      "outputSha256": "9233991885a67971681acf567625b8f26d2149739d7dacae565c45c0b2cc7cb3",
+      "mode": "100644",
+      "inputBytes": 132934,
+      "outputBytes": 132934
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/release-netlify-exclusive-publisher.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/release-netlify-exclusive-publisher.mjs",
+      "bytes": 11741,
+      "inputSha256": "925e95f10b03b48b0150d2e82ef6f0f360798db5695b7309c6afd4c4d59d7ce2",
+      "outputSha256": "925e95f10b03b48b0150d2e82ef6f0f360798db5695b7309c6afd4c4d59d7ce2",
+      "mode": "100644",
+      "inputBytes": 11741,
+      "outputBytes": 11741
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/rollback-readiness.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/rollback-readiness.mjs",
+      "bytes": 23798,
+      "inputSha256": "ca42892d75ffde19682bfe990ef5349b8392ea367ada631978dfec9c0d984aa0",
+      "outputSha256": "ca42892d75ffde19682bfe990ef5349b8392ea367ada631978dfec9c0d984aa0",
+      "mode": "100644",
+      "inputBytes": 23798,
+      "outputBytes": 23798
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
+      "bytes": 11465,
+      "inputSha256": "00ca4193f205c34dc7f507c9e1e865603f3ad35f94e4de3b71c4f41a8452ceac",
+      "outputSha256": "00ca4193f205c34dc7f507c9e1e865603f3ad35f94e4de3b71c4f41a8452ceac",
+      "mode": "100644",
+      "inputBytes": 11465,
+      "outputBytes": 11465
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/scheduled-function-route-denial.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/scheduled-function-route-denial.mjs",
+      "bytes": 29235,
+      "inputSha256": "259fa19b02752ce8317385091a0117fb8bebbcee7e03f2df6a68a90c00a3ebe1",
+      "outputSha256": "259fa19b02752ce8317385091a0117fb8bebbcee7e03f2df6a68a90c00a3ebe1",
+      "mode": "100644",
+      "inputBytes": 29235,
+      "outputBytes": 29235
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/validate-function-environment.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/validate-function-environment.mjs",
+      "bytes": 17433,
+      "inputSha256": "956b4ac7e63831cc9f9e8a498f1bd8ebffd7ef1ee434419ead861140cdb8c2bf",
+      "outputSha256": "956b4ac7e63831cc9f9e8a498f1bd8ebffd7ef1ee434419ead861140cdb8c2bf",
+      "mode": "100644",
+      "inputBytes": 17433,
+      "outputBytes": 17433
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-authorization.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-authorization.mjs",
+      "bytes": 66989,
+      "inputSha256": "7708334baad9ef06bd770d77b398350c011dde422e2ef91bf1c9918e3a421f5d",
+      "outputSha256": "7708334baad9ef06bd770d77b398350c011dde422e2ef91bf1c9918e3a421f5d",
+      "mode": "100644",
+      "inputBytes": 66989,
+      "outputBytes": 66989
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-backup-disable-runtime-boundary.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-backup-disable-runtime-boundary.mjs",
+      "bytes": 48954,
+      "inputSha256": "b24fbd95528f79734c0633f610d4bf9be18227220be4c851e87e53adb0b46ac6",
+      "outputSha256": "b24fbd95528f79734c0633f610d4bf9be18227220be4c851e87e53adb0b46ac6",
+      "mode": "100644",
+      "inputBytes": 48954,
+      "outputBytes": 48954
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-live-github-release-boundary.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-live-github-release-boundary.mjs",
+      "bytes": 38485,
+      "inputSha256": "775dfeb483bad0f5b99521e850852eda71e2cf748db8a3ee27a15b27ee3a1e75",
+      "outputSha256": "775dfeb483bad0f5b99521e850852eda71e2cf748db8a3ee27a15b27ee3a1e75",
+      "mode": "100644",
+      "inputBytes": 38485,
+      "outputBytes": 38485
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-live-netlify-authority-boundary.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-live-netlify-authority-boundary.mjs",
+      "bytes": 7361,
+      "inputSha256": "2ad2b502b15ddafb11acfdf09254a39dead03554c5e244025e5dcb2a0df4064d",
+      "outputSha256": "2ad2b502b15ddafb11acfdf09254a39dead03554c5e244025e5dcb2a0df4064d",
+      "mode": "100644",
+      "inputBytes": 7361,
+      "outputBytes": 7361
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-netlify-control-file-behavior.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-netlify-control-file-behavior.mjs",
+      "bytes": 44181,
+      "inputSha256": "8ed8524e0dc78bbbd47fcfa39ef7aadf76cabae53f5078eee981c30446fc0737",
+      "outputSha256": "8ed8524e0dc78bbbd47fcfa39ef7aadf76cabae53f5078eee981c30446fc0737",
+      "mode": "100644",
+      "inputBytes": 44181,
+      "outputBytes": 44181
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-netlify-exclusive-publisher.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-netlify-exclusive-publisher.mjs",
+      "bytes": 18984,
+      "inputSha256": "67a44764d1b912d75fd711ba2590785105203ee92bdb13d77b0794d0fdc215d6",
+      "outputSha256": "67a44764d1b912d75fd711ba2590785105203ee92bdb13d77b0794d0fdc215d6",
+      "mode": "100644",
+      "inputBytes": 18984,
+      "outputBytes": 18984
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-private-draft-lifecycle.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-private-draft-lifecycle.mjs",
+      "bytes": 13681,
+      "inputSha256": "2f7b92935135c6c429680504001ee221c835c21be7dd8bdcd98dd23ef8a2b60e",
+      "outputSha256": "2f7b92935135c6c429680504001ee221c835c21be7dd8bdcd98dd23ef8a2b60e",
+      "mode": "100644",
+      "inputBytes": 13681,
+      "outputBytes": 13681
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-producer-bundle.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-producer-bundle.mjs",
+      "bytes": 17701,
+      "inputSha256": "2a51cd7aa0b335114de3c9f9f371429a6bf3e1a8acb9814ccf6a106525f6fe7f",
+      "outputSha256": "2a51cd7aa0b335114de3c9f9f371429a6bf3e1a8acb9814ccf6a106525f6fe7f",
+      "mode": "100644",
+      "inputBytes": 17701,
+      "outputBytes": 17701
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-rollback-attestation-deposit.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-rollback-attestation-deposit.mjs",
+      "bytes": 22253,
+      "inputSha256": "a9080797b558415a81df8951fb56a817af5b37c47896be46455c52e0ca8c44da",
+      "outputSha256": "a9080797b558415a81df8951fb56a817af5b37c47896be46455c52e0ca8c44da",
+      "mode": "100644",
+      "inputBytes": 22253,
+      "outputBytes": 22253
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-rollback-authorization-chain.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-rollback-authorization-chain.mjs",
+      "bytes": 4894,
+      "inputSha256": "703874219037f6a197c176d1ebe636a6138baea1c1d1feb74cdabab0a5219edf",
+      "outputSha256": "703874219037f6a197c176d1ebe636a6138baea1c1d1feb74cdabab0a5219edf",
+      "mode": "100644",
+      "inputBytes": 4894,
+      "outputBytes": 4894
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/verify-runtime-capability-boundary.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/verify-runtime-capability-boundary.mjs",
+      "bytes": 9626,
+      "inputSha256": "d7b0712a20637eb5cf46e5fe3e25e886c4c5538c73b4029776e910e998465bb4",
+      "outputSha256": "d7b0712a20637eb5cf46e5fe3e25e886c4c5538c73b4029776e910e998465bb4",
+      "mode": "100644",
+      "inputBytes": 9626,
+      "outputBytes": 9626
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/test-support/uat-browser-local.mjs",
+      "path": "ops/cnyos-staging-controller/test-support/uat-browser-local.mjs",
+      "bytes": 45563,
+      "inputSha256": "256ede0248b4a2b9e4c5b06c7005f97483cc7c78d709150f9bea30c898a6b154",
+      "outputSha256": "6188cd4f6832c139039c228943db75b386e7e56407c8ea489a153f592bed4e78",
+      "mode": "100644",
+      "inputBytes": 45513,
+      "outputBytes": 45563,
+      "adaptation": "path-only"
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/authorization-foundation-security-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/authorization-foundation-security-contract.mjs",
+      "bytes": 84427,
+      "inputSha256": "85b31587bd669ffeba02eddc0591ec2e15f5327d4940b4abb285f66728fbc65e",
+      "outputSha256": "85b31587bd669ffeba02eddc0591ec2e15f5327d4940b4abb285f66728fbc65e",
+      "mode": "100644",
+      "inputBytes": 84427,
+      "outputBytes": 84427
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/backup-disable-runtime-boundary-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/backup-disable-runtime-boundary-contract.mjs",
+      "bytes": 25914,
+      "inputSha256": "39116b30075fc97e869ef9374390abbc9559aaea1bc66488dddae4568bd256b8",
+      "outputSha256": "39116b30075fc97e869ef9374390abbc9559aaea1bc66488dddae4568bd256b8",
+      "mode": "100644",
+      "inputBytes": 25914,
+      "outputBytes": 25914
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-authenticated-uat-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-authenticated-uat-contract.mjs",
+      "bytes": 13303,
+      "inputSha256": "cceeabb3d196ee98e3d059bc419d4e4ee6e0d1ed89ec930c1349f7cd77b7fb39",
+      "outputSha256": "cceeabb3d196ee98e3d059bc419d4e4ee6e0d1ed89ec930c1349f7cd77b7fb39",
+      "mode": "100644",
+      "inputBytes": 13303,
+      "outputBytes": 13303
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
+      "bytes": 229710,
+      "inputSha256": "a0024a38a3df519d79cb78b86060ea23e2a3948f7840b1dd8b3ab69bf2022f58",
+      "outputSha256": "a0024a38a3df519d79cb78b86060ea23e2a3948f7840b1dd8b3ab69bf2022f58",
+      "mode": "100644",
+      "inputBytes": 229710,
+      "outputBytes": 229710
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-function-bundle-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-function-bundle-contract.mjs",
+      "bytes": 33621,
+      "inputSha256": "c826ebfcd5fcdd482bb744cafdb4cd563b8db442324af86e6f4bf39690f17871",
+      "outputSha256": "c826ebfcd5fcdd482bb744cafdb4cd563b8db442324af86e6f4bf39690f17871",
+      "mode": "100644",
+      "inputBytes": 33621,
+      "outputBytes": 33621
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-static-reproducibility-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-static-reproducibility-contract.mjs",
+      "bytes": 19520,
+      "inputSha256": "ea9f2e15a7a53b4350216c9c735cfcc65140f9851740043bda4a8b3522202c4e",
+      "outputSha256": "ea9f2e15a7a53b4350216c9c735cfcc65140f9851740043bda4a8b3522202c4e",
+      "mode": "100644",
+      "inputBytes": 19520,
+      "outputBytes": 19520
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-access-observations-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-access-observations-contract.mjs",
+      "bytes": 8790,
+      "inputSha256": "ef3323fdb8f3cd747b29cfe8a8b23432d93b5f6cbde28c03844cc178b01d8f1e",
+      "outputSha256": "37574c7a22bd30136995d239bd5aa3aed2e08c1350b05e8b1c0dcf47754d2a74",
+      "mode": "100644",
+      "inputBytes": 8750,
+      "outputBytes": 8790,
+      "adaptation": "path-only"
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-browser-matrix-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-matrix-contract.mjs",
+      "bytes": 22008,
+      "inputSha256": "956a1eded3f4bd94f8452d3bdd24f4ef377f56f4181aeabc687888d2eeff7ba8",
+      "outputSha256": "7e9c9eec20dbe118719037dce6d533fcd0d7de7bcf7999d6d50afe33ef51c839",
+      "mode": "100644",
+      "inputBytes": 21960,
+      "outputBytes": 22008,
+      "adaptation": "path-only"
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-browser-read-policy-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-read-policy-contract.mjs",
+      "bytes": 11993,
+      "inputSha256": "1e1bfc5c0e5ab72a953164b99c795eafa9e84c4b7a3afc4959a0cf75d517b12e",
+      "outputSha256": "d92549007cf57009a87365a94b1e6daa13f5ab45e85d5d81930575ff83beb27d",
+      "mode": "100644",
+      "inputBytes": 11969,
+      "outputBytes": 11993,
+      "adaptation": "path-only"
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-browser-transport-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-transport-contract.mjs",
+      "bytes": 29014,
+      "inputSha256": "33689f4e255be2c438d3a76c6efce3fc46f402da349bb0461e73877c9338f344",
+      "outputSha256": "33689f4e255be2c438d3a76c6efce3fc46f402da349bb0461e73877c9338f344",
+      "mode": "100644",
+      "inputBytes": 29014,
+      "outputBytes": 29014
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-evidence-publication-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/controller-uat-evidence-publication-contract.mjs",
+      "bytes": 9565,
+      "inputSha256": "3021a0896c337d98c09aa5383dc7cf2a85fe944df98c527f5d6e7afe20a1e586",
+      "outputSha256": "3021a0896c337d98c09aa5383dc7cf2a85fe944df98c527f5d6e7afe20a1e586",
+      "mode": "100644",
+      "inputBytes": 9565,
+      "outputBytes": 9565
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/draft-mutation-recovery-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/draft-mutation-recovery-contract.mjs",
+      "bytes": 27729,
+      "inputSha256": "554189764fd702b76c9abab9f55e3260a3993ae021121e22ea137ada8209a852",
+      "outputSha256": "554189764fd702b76c9abab9f55e3260a3993ae021121e22ea137ada8209a852",
+      "mode": "100644",
+      "inputBytes": 27729,
+      "outputBytes": 27729
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/external-broker-trust-boundaries-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/external-broker-trust-boundaries-contract.mjs",
+      "bytes": 13411,
+      "inputSha256": "0367c55824000c3ed6d0a2f0c8579488adad6c9b8573846c7b386d59e72b2c0d",
+      "outputSha256": "0367c55824000c3ed6d0a2f0c8579488adad6c9b8573846c7b386d59e72b2c0d",
+      "mode": "100644",
+      "inputBytes": 13411,
+      "outputBytes": 13411
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/function-comparison-handoff-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/function-comparison-handoff-contract.mjs",
+      "bytes": 11029,
+      "inputSha256": "aa386a3297e18fd7e88e9f33e0bf5e513ccb6bc90a0384dcf518a1b8017773a2",
+      "outputSha256": "aa386a3297e18fd7e88e9f33e0bf5e513ccb6bc90a0384dcf518a1b8017773a2",
+      "mode": "100644",
+      "inputBytes": 11029,
+      "outputBytes": 11029
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/function-recipe-input-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/function-recipe-input-contract.mjs",
+      "bytes": 12006,
+      "inputSha256": "2be1ccb24b0bb06ea9f118365f3490775bdaac8000483b27138c32ac2c652361",
+      "outputSha256": "2be1ccb24b0bb06ea9f118365f3490775bdaac8000483b27138c32ac2c652361",
+      "mode": "100644",
+      "inputBytes": 12006,
+      "outputBytes": 12006
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/live-github-release-boundary-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/live-github-release-boundary-contract.mjs",
+      "bytes": 37431,
+      "inputSha256": "fde2e54a4cccbbf4e76842043b42ad844237a54296f56b97bcf350f9e2dcc66e",
+      "outputSha256": "fde2e54a4cccbbf4e76842043b42ad844237a54296f56b97bcf350f9e2dcc66e",
+      "mode": "100644",
+      "inputBytes": 37431,
+      "outputBytes": 37431
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/live-netlify-authority-boundary-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/live-netlify-authority-boundary-contract.mjs",
+      "bytes": 19809,
+      "inputSha256": "9df739b8d154886bee61e59426c0d4eee234362f69ae7e6b4ce3ee6bc317c73a",
+      "outputSha256": "9df739b8d154886bee61e59426c0d4eee234362f69ae7e6b4ce3ee6bc317c73a",
+      "mode": "100644",
+      "inputBytes": 19809,
+      "outputBytes": 19809
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/netlify-control-file-behavior-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/netlify-control-file-behavior-contract.mjs",
+      "bytes": 33927,
+      "inputSha256": "fe1869a79ca671c0593baf79c0d5230be3ea734e7e878c435289bb79ad76c7e5",
+      "outputSha256": "fe1869a79ca671c0593baf79c0d5230be3ea734e7e878c435289bb79ad76c7e5",
+      "mode": "100644",
+      "inputBytes": 33927,
+      "outputBytes": 33927
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/netlify-exclusive-publisher-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/netlify-exclusive-publisher-contract.mjs",
+      "bytes": 16013,
+      "inputSha256": "6d1ba9be877937034cfda694b902c690564fad7ee241b3d7b9b8732f9e38552f",
+      "outputSha256": "6d1ba9be877937034cfda694b902c690564fad7ee241b3d7b9b8732f9e38552f",
+      "mode": "100644",
+      "inputBytes": 16013,
+      "outputBytes": 16013
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/private-draft-access-boundary-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/private-draft-access-boundary-contract.mjs",
+      "bytes": 38299,
+      "inputSha256": "e6ab4984666094ab768ff385adfaf12e3c083a1febba0384b63818a9ac6ef507",
+      "outputSha256": "e6ab4984666094ab768ff385adfaf12e3c083a1febba0384b63818a9ac6ef507",
+      "mode": "100644",
+      "inputBytes": 38299,
+      "outputBytes": 38299
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/private-draft-lifecycle-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/private-draft-lifecycle-contract.mjs",
+      "bytes": 6772,
+      "inputSha256": "5b2feb92a9401566f787a32c9178d1b5f8c3fe233d086049598802c634800078",
+      "outputSha256": "5b2feb92a9401566f787a32c9178d1b5f8c3fe233d086049598802c634800078",
+      "mode": "100644",
+      "inputBytes": 6772,
+      "outputBytes": 6772
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/release-state-reconciliation-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/release-state-reconciliation-contract.mjs",
+      "bytes": 122628,
+      "inputSha256": "0774a93f162636395df55a4ee080babe1c39cd83434fe7c4dc17ce3dc521a684",
+      "outputSha256": "0774a93f162636395df55a4ee080babe1c39cd83434fe7c4dc17ce3dc521a684",
+      "mode": "100644",
+      "inputBytes": 122628,
+      "outputBytes": 122628
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/rollback-attestation-deposit-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/rollback-attestation-deposit-contract.mjs",
+      "bytes": 43011,
+      "inputSha256": "5397c1280814c2cfb7a87dabee15b8cfd6bfb0cb7bb1009fd68cb259e2956692",
+      "outputSha256": "5397c1280814c2cfb7a87dabee15b8cfd6bfb0cb7bb1009fd68cb259e2956692",
+      "mode": "100644",
+      "inputBytes": 43011,
+      "outputBytes": 43011
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/rollback-authorization-chain-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/rollback-authorization-chain-contract.mjs",
+      "bytes": 5309,
+      "inputSha256": "8f2fb2035649af05a4a88dce65458fb4a0e3782f1decb0d0ce3a61095adbd0ef",
+      "outputSha256": "8f2fb2035649af05a4a88dce65458fb4a0e3782f1decb0d0ce3a61095adbd0ef",
+      "mode": "100644",
+      "inputBytes": 5309,
+      "outputBytes": 5309
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/rollback-principal-boundary-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/rollback-principal-boundary-contract.mjs",
+      "bytes": 23933,
+      "inputSha256": "d6c894e6cbc0cf766cbc1b15a1a198cd3da8e39365bf0a99b733834bdda5d9af",
+      "outputSha256": "d6c894e6cbc0cf766cbc1b15a1a198cd3da8e39365bf0a99b733834bdda5d9af",
+      "mode": "100644",
+      "inputBytes": 23933,
+      "outputBytes": 23933
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/rollback-readiness-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/rollback-readiness-contract.mjs",
+      "bytes": 27833,
+      "inputSha256": "b37a4a79b16d15c9f66041db1ec32ce86bf6dbc0c448d9cd0472682f9707b0e2",
+      "outputSha256": "b37a4a79b16d15c9f66041db1ec32ce86bf6dbc0c448d9cd0472682f9707b0e2",
+      "mode": "100644",
+      "inputBytes": 27833,
+      "outputBytes": 27833
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/runtime-capability-boundary-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/runtime-capability-boundary-contract.mjs",
+      "bytes": 9877,
+      "inputSha256": "3a7535df4798866ab3feb6b7127d1eaf158192da8ffe7b9e9f779683ee36dd2f",
+      "outputSha256": "3a7535df4798866ab3feb6b7127d1eaf158192da8ffe7b9e9f779683ee36dd2f",
+      "mode": "100644",
+      "inputBytes": 9877,
+      "outputBytes": 9877
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/scheduled-function-route-denial-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/scheduled-function-route-denial-contract.mjs",
+      "bytes": 28512,
+      "inputSha256": "f0b920a78affdcbc8d715b6a3df2509e76f86bb12ba1b224d2f744a849a8aa9a",
+      "outputSha256": "f0b920a78affdcbc8d715b6a3df2509e76f86bb12ba1b224d2f744a849a8aa9a",
+      "mode": "100644",
+      "inputBytes": 28512,
+      "outputBytes": 28512
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/uat-evidence-schema-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/uat-evidence-schema-contract.mjs",
+      "bytes": 19804,
+      "inputSha256": "82ebaad7d08fded6374da1e5e313ea131074b986e1501a40f6efb1444cf30823",
+      "outputSha256": "82ebaad7d08fded6374da1e5e313ea131074b986e1501a40f6efb1444cf30823",
+      "mode": "100644",
+      "inputBytes": 19804,
+      "outputBytes": 19804
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/workflow/cnyos-staging-controller.template.yml",
+      "path": "ops/cnyos-staging-controller/workflow/cnyos-staging-controller.template.yml",
+      "bytes": 207607,
+      "inputSha256": "25ec24ccaf5f2405b93b59a439654c69047ced3fd810a7860314fe86718f46c3",
+      "outputSha256": "25ec24ccaf5f2405b93b59a439654c69047ced3fd810a7860314fe86718f46c3",
+      "mode": "100644",
+      "inputBytes": 207607,
+      "outputBytes": 207607
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/workflow/cnyos-staging-rollback-watchdog.template.yml",
+      "path": "ops/cnyos-staging-controller/workflow/cnyos-staging-rollback-watchdog.template.yml",
+      "bytes": 37149,
+      "inputSha256": "5df5cda24fdce709ac7a370519a95f44e1e9fcf378d5bb9ffe9a8c8bfd750433",
+      "outputSha256": "5df5cda24fdce709ac7a370519a95f44e1e9fcf378d5bb9ffe9a8c8bfd750433",
+      "mode": "100644",
+      "inputBytes": 37149,
+      "outputBytes": 37149
+    },
+    {
+      "sourcePath": "outcomes.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/outcomes.html",
+      "bytes": 5633,
+      "inputSha256": "1df322c519e22ccd46f9fb7b8ed1a9be8612a1401624f38a7e482e4b2f29fc82",
+      "outputSha256": "1df322c519e22ccd46f9fb7b8ed1a9be8612a1401624f38a7e482e4b2f29fc82",
+      "mode": "100644",
+      "inputBytes": 5633,
+      "outputBytes": 5633
+    },
+    {
+      "sourcePath": "outcomes.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/outcomes.js",
+      "bytes": 7260,
+      "inputSha256": "98447611995560afaafd8ed9b5474da9281949b2c77487fd8a0acaf819f90a3a",
+      "outputSha256": "98447611995560afaafd8ed9b5474da9281949b2c77487fd8a0acaf819f90a3a",
+      "mode": "100644",
+      "inputBytes": 7260,
+      "outputBytes": 7260
+    },
+    {
+      "sourcePath": "pharmacy.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/pharmacy.html",
+      "bytes": 11690,
+      "inputSha256": "e840bc03afc66a2fb35bb7a51608c0e250c7623dba8fefc1c12bff43fc9d4d5f",
+      "outputSha256": "e840bc03afc66a2fb35bb7a51608c0e250c7623dba8fefc1c12bff43fc9d4d5f",
+      "mode": "100644",
+      "inputBytes": 11690,
+      "outputBytes": 11690
+    },
+    {
+      "sourcePath": "pharmacy.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/pharmacy.js",
+      "bytes": 29006,
+      "inputSha256": "8827a2d7561dbcbfe978f309662db3cbc2525eeb9bd5a6f1c54b9513c5e52cea",
+      "outputSha256": "8827a2d7561dbcbfe978f309662db3cbc2525eeb9bd5a6f1c54b9513c5e52cea",
+      "mode": "100644",
+      "inputBytes": 29006,
+      "outputBytes": 29006
+    },
+    {
+      "sourcePath": "platform-config.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/platform-config.js",
+      "bytes": 10381,
+      "inputSha256": "ed5938226ff12849121117c60f4815cb75d177ce8cb46202c724a83eec5b8e04",
+      "outputSha256": "ed5938226ff12849121117c60f4815cb75d177ce8cb46202c724a83eec5b8e04",
+      "mode": "100644",
+      "inputBytes": 10381,
+      "outputBytes": 10381
+    },
+    {
+      "sourcePath": "production.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/production.html",
+      "bytes": 8231,
+      "inputSha256": "4f8057a524a979b273244ced360189cd163f1fda08bd78a976a0afe62af20569",
+      "outputSha256": "4f8057a524a979b273244ced360189cd163f1fda08bd78a976a0afe62af20569",
+      "mode": "100644",
+      "inputBytes": 8231,
+      "outputBytes": 8231
+    },
+    {
+      "sourcePath": "production.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/production.js",
+      "bytes": 23429,
+      "inputSha256": "71fb7abea3fdf53235b23164f8b83a4695d570e16a230ff0286dbf3391a89139",
+      "outputSha256": "71fb7abea3fdf53235b23164f8b83a4695d570e16a230ff0286dbf3391a89139",
+      "mode": "100644",
+      "inputBytes": 23429,
+      "outputBytes": 23429
+    },
+    {
+      "sourcePath": "quality.html",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/quality.html",
+      "bytes": 6621,
+      "inputSha256": "49050f4b31338ea03cdcefb6f9d89657eef23dfb3d51ec21d217229939de76b0",
+      "outputSha256": "49050f4b31338ea03cdcefb6f9d89657eef23dfb3d51ec21d217229939de76b0",
+      "mode": "100644",
+      "inputBytes": 6621,
+      "outputBytes": 6621
+    },
+    {
+      "sourcePath": "quality.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/quality.js",
+      "bytes": 9837,
+      "inputSha256": "11097d0f37ecdc01d7c7df7c3683e948ffad8cd7d4a5477813c8ddaa43f1a9e1",
+      "outputSha256": "11097d0f37ecdc01d7c7df7c3683e948ffad8cd7d4a5477813c8ddaa43f1a9e1",
+      "mode": "100644",
+      "inputBytes": 9837,
+      "outputBytes": 9837
+    },
+    {
+      "sourcePath": "scripts/staging-support.mjs",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/staging-support.mjs.txt",
+      "bytes": 10874,
+      "inputSha256": "19900067612ab50a02cab2a1c1e0a151415302bcae93bb3662148a19181eced8",
+      "outputSha256": "19900067612ab50a02cab2a1c1e0a151415302bcae93bb3662148a19181eced8",
+      "mode": "100644",
+      "inputBytes": 10874,
+      "outputBytes": 10874
+    },
+    {
+      "sourcePath": "scripts/verify-authenticated-staging.mjs",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/verify-authenticated-staging.mjs.txt",
+      "bytes": 12085,
+      "inputSha256": "e29e3d0db9c4221b3e28e0f8e64500a6edd726a49b76bfc02f1062aa717fa946",
+      "outputSha256": "e29e3d0db9c4221b3e28e0f8e64500a6edd726a49b76bfc02f1062aa717fa946",
+      "mode": "100644",
+      "inputBytes": 12085,
+      "outputBytes": 12085
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/evidence-publication-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/evidence-publication-contract.mjs",
+      "bytes": 16258,
+      "inputSha256": "3bb149137731635fa5cf489d9165edab8ecb28f5359c39b09e5cf0dc2e9b5257",
+      "outputSha256": "3bb149137731635fa5cf489d9165edab8ecb28f5359c39b09e5cf0dc2e9b5257",
+      "mode": "100644",
+      "inputBytes": 16258,
+      "outputBytes": 16258
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/controller-uat-subscription-evidence.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/controller-uat-subscription-evidence.mjs",
+      "bytes": 3408,
+      "inputSha256": "d75b88156c71ae96ddad9ed5883658f4f461a17c1899f34c5ffcb93b23bb5afd",
+      "outputSha256": "d75b88156c71ae96ddad9ed5883658f4f461a17c1899f34c5ffcb93b23bb5afd",
+      "mode": "100644",
+      "inputBytes": 3408,
+      "outputBytes": 3408
+    },
+    {
+      "sourcePath": "opd-workflow.js",
+      "path": "ops/cnyos-staging-controller/test-support/candidate-source/opd-workflow.js",
+      "bytes": 20480,
+      "inputBytes": 20480,
+      "outputBytes": 20480,
+      "inputSha256": "bff472c125e92365704f76ea585178b1bcbda8aa2402b4e96212826fc874c473",
+      "outputSha256": "bff472c125e92365704f76ea585178b1bcbda8aa2402b4e96212826fc874c473",
+      "mode": "100644",
+      "closure": "reviewed fixture extension"
+    }
+  ],
+  "deploymentAuthorized": false,
+  "humanApproval": false,
+  "addedClosureFiles": [
+    "ops/cnyos-staging-controller/scripts/controller-uat-subscription-evidence.mjs",
+    "ops/cnyos-staging-controller/tests/evidence-publication-contract.mjs",
+    "opd-workflow.js"
+  ]
+}

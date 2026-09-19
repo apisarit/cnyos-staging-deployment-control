@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "environment": "cnyos-staging",
+  "keys": [
+    {
+      "id": "__INDEPENDENT_REVIEWER_KEY_ID__",
+      "role": "independent_security_reviewer",
+      "githubLogin": "__INDEPENDENT_REVIEWER_GITHUB_LOGIN__",
+      "ownerName": "__INDEPENDENT_REVIEWER_NAME__",
+      "publicKeyPem": "__INDEPENDENT_REVIEWER_ED25519_PUBLIC_KEY_PEM__",
+      "spkiSha256": "__INDEPENDENT_REVIEWER_SPKI_SHA256__"
+    },
+    {
+      "id": "__MANAGED_RISK_OWNER_KEY_ID__",
+      "role": "managed_platform_risk_owner",
+      "githubLogin": "__MANAGED_RISK_OWNER_GITHUB_LOGIN__",
+      "ownerName": "__MANAGED_RISK_OWNER_NAME__",
+      "publicKeyPem": "__MANAGED_RISK_OWNER_ED25519_PUBLIC_KEY_PEM__",
+      "spkiSha256": "__MANAGED_RISK_OWNER_SPKI_SHA256__"
+    }
+  ]
+}
