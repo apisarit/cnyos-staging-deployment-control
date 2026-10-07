@@ -36,6 +36,16 @@
     "qrIssuer": "CHANANYA-STG",
     "authRedirectOrigin": "https://cnyos.netlify.app"
   },
+  "boundedTreatmentUatTarget": {
+    "deploymentId": "chananya-clinical-staging",
+    "origin": "https://cnyos-clinical-staging.netlify.app",
+    "netlifySiteId": "887e058b-6e13-461f-b3c7-ae096b7046fe",
+    "netlifySiteName": "cnyos-clinical-staging",
+    "supabaseProjectRef": "hsmnjwxurlmsizndjlun",
+    "supabaseOrigin": "https://hsmnjwxurlmsizndjlun.supabase.co",
+    "clinicId": "00000000-0000-4000-8000-00000000a001",
+    "clinicCode": "CHANANYA-STG"
+  },
   "productionDenylist": {
     "netlifySiteId": "f1a31624-f90b-4d72-be3d-e91b7e2b2f38",
     "netlifyOrigin": "https://chananya.netlify.app",

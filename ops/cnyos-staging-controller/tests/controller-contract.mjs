@@ -88,6 +88,19 @@ assert.equal(POLICY.controller.releaseWorkflowPath, '.github/workflows/cnyos-sta
 assert.equal(POLICY.controller.rollbackWorkflowPath,
   '.github/workflows/cnyos-staging-rollback-watchdog.yml');
 assert.equal(POLICY.target.netlifySiteId, '7da5e39e-580d-44f1-8623-605313e2fb2b');
+assert.deepEqual(POLICY.boundedTreatmentUatTarget, {
+  deploymentId: 'chananya-clinical-staging',
+  origin: 'https://cnyos-clinical-staging.netlify.app',
+  netlifySiteId: '887e058b-6e13-461f-b3c7-ae096b7046fe',
+  netlifySiteName: 'cnyos-clinical-staging',
+  supabaseProjectRef: POLICY.target.supabaseProjectRef,
+  supabaseOrigin: POLICY.target.supabaseOrigin,
+  clinicId: POLICY.target.clinicId,
+  clinicCode: POLICY.target.clinicCode
+});
+assert.notEqual(POLICY.boundedTreatmentUatTarget.netlifySiteId,
+  POLICY.target.netlifySiteId);
+assert.notEqual(POLICY.boundedTreatmentUatTarget.origin, POLICY.target.netlifyOrigin);
 assert.equal(POLICY.productionDenylist.netlifySiteId,
   'f1a31624-f90b-4d72-be3d-e91b7e2b2f38');
 assert.deepEqual(assertDeploymentBoundary(POLICY), {
@@ -338,7 +351,8 @@ assert.equal(packageManifest.scripts.test,
   'node tests/netlify-exclusive-publisher-contract.mjs && ' +
   'node tests/rollback-readiness-contract.mjs && ' +
   'node tests/external-broker-trust-boundaries-contract.mjs && ' +
-  'node tests/bounded-treatment-uat-contract.mjs');
+  'node tests/bounded-treatment-uat-contract.mjs && ' +
+  'node tests/provision-bounded-treatment-fixture-contract.mjs');
 const defaultTestFiles = packageManifest.scripts.test.split(' && ').map(command => {
   assert.match(command, /^node tests\/[a-z0-9-]+-contract\.mjs$/,
     'default contracts must run explicitly without shell fallbacks');
@@ -435,6 +449,7 @@ for (const { id, test } of protectedActivationPairs) {
 }
 const protectedFoundationScripts = [
   'bounded-treatment-uat.mjs',
+  'provision-bounded-treatment-fixture.mjs',
   'materialize-function-recipe-input.mjs',
   'create-function-comparison-handoff.mjs',
   'controller-uat-access-observations.mjs',
@@ -459,6 +474,7 @@ assert.deepEqual(CLOSED_WORLD_SCRIPT_INVENTORY, [...new Set([
 ])].sort());
 assert.deepEqual(CLOSED_WORLD_TEST_INVENTORY, [
   'bounded-treatment-uat-contract.mjs',
+  'provision-bounded-treatment-fixture-contract.mjs',
   'function-recipe-input-contract.mjs',
   'function-comparison-handoff-contract.mjs',
   'controller-uat-access-observations-contract.mjs',

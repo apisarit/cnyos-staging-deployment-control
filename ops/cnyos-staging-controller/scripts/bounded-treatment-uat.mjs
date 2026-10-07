@@ -4,19 +4,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-
-export const BOUNDED_TREATMENT_TARGET = Object.freeze({
-  origin: 'https://cnyos-clinical-staging.netlify.app',
-  netlifySiteId: '887e058b-6e13-461f-b3c7-ae096b7046fe',
-  netlifySiteName: 'cnyos-clinical-staging',
-  supabaseProjectRef: 'hsmnjwxurlmsizndjlun',
-  supabaseOrigin: 'https://hsmnjwxurlmsizndjlun.supabase.co',
-  clinicId: '00000000-0000-4000-8000-00000000a001',
-  clinicCode: 'CHANANYA-STG'
-});
+import { POLICY, POLICY_SHA256, assertControllerRuntime } from './policy.mjs';
 
 export const BOUNDED_TREATMENT_ACK =
   'I_AUTHORIZE_EXACTLY_TWO_SYNTHETIC_TREATMENT_WRITES';
+
+const BOUNDED_TREATMENT_AUTHORIZATION_DECISION =
+  'authorize_exactly_two_synthetic_treatment_writes';
 
 const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -170,6 +164,54 @@ function canonicalTimestamp(value, code) {
   if (!Number.isFinite(time) || new Date(time).toISOString() !== normalized) fail(code);
   return normalized;
 }
+
+export function validateBoundedTreatmentPolicyTarget(value, policy = POLICY) {
+  const code = 'CNYOS_BOUNDED_TREATMENT_POLICY_TARGET_INVALID';
+  exactKeys(value, [
+    'deploymentId', 'origin', 'netlifySiteId', 'netlifySiteName',
+    'supabaseProjectRef', 'supabaseOrigin', 'clinicId', 'clinicCode'
+  ], code);
+  const deploymentId = required(value.deploymentId, code, 128);
+  const origin = required(value.origin, code, 256);
+  const netlifySiteId = required(value.netlifySiteId, code, 64).toLowerCase();
+  const netlifySiteName = required(value.netlifySiteName, code, 128);
+  const supabaseProjectRef = required(value.supabaseProjectRef, code, 64);
+  const supabaseOrigin = required(value.supabaseOrigin, code, 256);
+  const clinicId = exactUuid(value.clinicId, code);
+  const clinicCode = required(value.clinicCode, code, 64);
+  let parsedOrigin;
+  let parsedSupabaseOrigin;
+  try {
+    parsedOrigin = new URL(origin);
+    parsedSupabaseOrigin = new URL(supabaseOrigin);
+  } catch { fail(code); }
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(netlifySiteName) ||
+    !/^[a-z]{20}$/.test(supabaseProjectRef) ||
+    !/^[A-Z0-9][A-Z0-9-]{2,63}$/.test(clinicCode) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(netlifySiteId) ||
+    origin !== `https://${netlifySiteName}.netlify.app` ||
+    supabaseOrigin !== `https://${supabaseProjectRef}.supabase.co` ||
+    parsedOrigin.origin !== origin || parsedOrigin.pathname !== '/' ||
+    parsedOrigin.username || parsedOrigin.password || parsedOrigin.port ||
+    parsedOrigin.search || parsedOrigin.hash ||
+    parsedSupabaseOrigin.origin !== supabaseOrigin || parsedSupabaseOrigin.pathname !== '/' ||
+    parsedSupabaseOrigin.username || parsedSupabaseOrigin.password || parsedSupabaseOrigin.port ||
+    parsedSupabaseOrigin.search || parsedSupabaseOrigin.hash ||
+    !isPlainObject(policy?.target) || !isPlainObject(policy?.productionDenylist) ||
+    netlifySiteId === policy.target.netlifySiteId || origin === policy.target.netlifyOrigin ||
+    netlifySiteId === policy.productionDenylist.netlifySiteId ||
+    origin === policy.productionDenylist.netlifyOrigin ||
+    supabaseProjectRef !== policy.target.supabaseProjectRef ||
+    supabaseOrigin !== policy.target.supabaseOrigin || clinicId !== policy.target.clinicId ||
+    clinicCode !== policy.target.clinicCode) fail(code);
+  return Object.freeze({
+    deploymentId, origin, netlifySiteId, netlifySiteName, supabaseProjectRef,
+    supabaseOrigin, clinicId, clinicCode
+  });
+}
+
+export const BOUNDED_TREATMENT_TARGET =
+  validateBoundedTreatmentPolicyTarget(POLICY.boundedTreatmentUatTarget);
 
 function sessionPayload(session, encounterId) {
   return Object.freeze({
@@ -359,10 +401,98 @@ async function readProtectedFixtureLedger(env) {
   }
 }
 
+function boundedControllerRuntime(env) {
+  try {
+    return assertControllerRuntime(env, { requireActor: false });
+  } catch (error) {
+    const code = String(error?.message || '');
+    fail(/^CNYOS_CONTROLLER_[A-Z0-9_:.-]+$/.test(code)
+      ? code
+      : 'CNYOS_BOUNDED_TREATMENT_CONTROLLER_RUNTIME_INVALID');
+  }
+}
+
+export function validateBoundedTreatmentRunAuthorization(value, {
+  runtime,
+  runId,
+  sourceCommit,
+  sourceTree,
+  deployId,
+  fixture,
+  now = new Date()
+}) {
+  const code = 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID';
+  exactKeys(value, [
+    'schemaVersion', 'evidenceType', 'status', 'decision', 'scope', 'syntheticOnly',
+    'realPatientDataAuthorized', 'productionAuthorization', 'authorizedAt', 'expiresAt',
+    'policySha256', 'controller', 'target', 'run'
+  ], code);
+  exactKeys(value.controller, [
+    'repository', 'ref', 'commit', 'workflowPath', 'workflowRef', 'runId', 'runAttempt'
+  ], code);
+  exactKeys(value.target, Object.keys(BOUNDED_TREATMENT_TARGET), code);
+  exactKeys(value.run, [
+    'runId', 'sourceCommit', 'sourceTree', 'deployId', 'fixtureSha256'
+  ], code);
+  const authorizedAt = canonicalTimestamp(value.authorizedAt, code);
+  const expiresAt = canonicalTimestamp(value.expiresAt, code);
+  const observedNow = now instanceof Date ? now : new Date(now);
+  const nowMs = observedNow.getTime();
+  const authorizedAtMs = Date.parse(authorizedAt);
+  const expiresAtMs = Date.parse(expiresAt);
+  const maximumLifetimeMs = POLICY.authorization?.maximumLifetimeMinutes * 60_000;
+  if (value.schemaVersion !== 1 ||
+    value.evidenceType !== 'cnyos_staging_bounded_treatment_run_authorization' ||
+    value.status !== 'authorized' ||
+    value.decision !== BOUNDED_TREATMENT_AUTHORIZATION_DECISION ||
+    value.scope !== 'cnyos_staging_only' || value.syntheticOnly !== true ||
+    value.realPatientDataAuthorized !== false || value.productionAuthorization !== false ||
+    String(value.policySha256 || '').toLowerCase() !== POLICY_SHA256 ||
+    value.controller.repository !== runtime.repository ||
+    value.controller.ref !== runtime.ref ||
+    String(value.controller.commit || '').toLowerCase() !== runtime.commit ||
+    value.controller.workflowPath !== runtime.workflowPath ||
+    value.controller.workflowRef !== runtime.workflowRef ||
+    value.controller.runId !== runtime.runId || value.controller.runAttempt !== 1 ||
+    canonicalJson(value.target) !== canonicalJson(BOUNDED_TREATMENT_TARGET) ||
+    value.run.runId !== runId ||
+    String(value.run.sourceCommit || '').toLowerCase() !== sourceCommit ||
+    String(value.run.sourceTree || '').toLowerCase() !== sourceTree ||
+    String(value.run.deployId || '').toLowerCase() !== deployId ||
+    String(value.run.fixtureSha256 || '').toLowerCase() !== canonicalFixtureSha256(fixture) ||
+    !Number.isFinite(nowMs) || !Number.isSafeInteger(maximumLifetimeMs) ||
+    maximumLifetimeMs <= 0 || authorizedAtMs > nowMs || expiresAtMs <= nowMs ||
+    expiresAtMs <= authorizedAtMs || expiresAtMs - authorizedAtMs > maximumLifetimeMs) fail(code);
+  return Object.freeze({
+    evidenceType: value.evidenceType,
+    status: value.status,
+    decision: value.decision,
+    authorizedAt,
+    expiresAt,
+    policySha256: POLICY_SHA256,
+    controller: Object.freeze({ ...value.controller, commit: runtime.commit }),
+    target: BOUNDED_TREATMENT_TARGET,
+    run: Object.freeze({
+      ...value.run,
+      sourceCommit,
+      sourceTree,
+      deployId,
+      fixtureSha256: canonicalFixtureSha256(fixture)
+    })
+  });
+}
+
 export async function loadBoundedTreatmentConfig(env = process.env, { now = () => new Date() } = {}) {
+  const observedNow = now();
+  if (!(observedNow instanceof Date) || Number.isNaN(observedNow.getTime())) {
+    fail('CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
+  }
   const runId = required(env.CNYOS_TREATMENT_UAT_RUN_ID,
     'CNYOS_BOUNDED_TREATMENT_RUN_ID_INVALID', 96);
   if (!RUN_ID.test(runId)) fail('CNYOS_BOUNDED_TREATMENT_RUN_ID_INVALID');
+  if (env.CNYOS_TREATMENT_UAT_ACK !== BOUNDED_TREATMENT_ACK) {
+    fail('CNYOS_BOUNDED_TREATMENT_ACK_REQUIRED');
+  }
   const practitionerEmail = required(env.CNYOS_STAGING_PRACTITIONER_EMAIL,
     'CNYOS_BOUNDED_TREATMENT_EMAIL_INVALID', 320).toLowerCase();
   if (!EMAIL.test(practitionerEmail)) fail('CNYOS_BOUNDED_TREATMENT_EMAIL_INVALID');
@@ -376,15 +506,47 @@ export async function loadBoundedTreatmentConfig(env = process.env, { now = () =
   let fixture;
   try { fixture = JSON.parse(rawFixture); }
   catch { fail('CNYOS_BOUNDED_TREATMENT_FIXTURE_INVALID'); }
+  fixture = validateTreatmentFixture(fixture, { runId, practitionerEmail });
+  const sourceCommit = exact(env.CNYOS_EXPECTED_SOURCE_COMMIT, SHA40,
+    'CNYOS_BOUNDED_TREATMENT_SOURCE_COMMIT_INVALID');
+  const sourceTree = exact(env.CNYOS_EXPECTED_SOURCE_TREE, SHA40,
+    'CNYOS_BOUNDED_TREATMENT_SOURCE_TREE_INVALID');
+  const deployId = exact(env.CNYOS_EXPECTED_NETLIFY_DEPLOY_ID, DEPLOY_ID,
+    'CNYOS_BOUNDED_TREATMENT_DEPLOY_ID_INVALID');
+  const controllerRuntime = boundedControllerRuntime(env);
+  const rawAuthorization = required(env.CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON,
+    'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_REQUIRED', MAX_JSON_BYTES);
+  const expectedAuthorizationSha256 = exact(
+    env.CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256,
+    SHA256,
+    'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_DIGEST_REQUIRED'
+  );
+  const inputAuthorizationSha256 = hash(Buffer.from(rawAuthorization));
+  if (!crypto.timingSafeEqual(Buffer.from(inputAuthorizationSha256, 'hex'),
+    Buffer.from(expectedAuthorizationSha256, 'hex'))) {
+    fail('CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_DIGEST_MISMATCH');
+  }
+  let authorizationValue;
+  try { authorizationValue = JSON.parse(rawAuthorization); }
+  catch { fail('CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID'); }
+  if (rawAuthorization !== JSON.stringify(authorizationValue)) {
+    fail('CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
+  }
+  const runAuthorization = validateBoundedTreatmentRunAuthorization(authorizationValue, {
+    runtime: controllerRuntime,
+    runId,
+    sourceCommit,
+    sourceTree,
+    deployId,
+    fixture,
+    now: observedNow
+  });
   const ledgerFile = await readProtectedFixtureLedger(env);
   const config = {
     runId,
-    sourceCommit: exact(env.CNYOS_EXPECTED_SOURCE_COMMIT, SHA40,
-      'CNYOS_BOUNDED_TREATMENT_SOURCE_COMMIT_INVALID'),
-    sourceTree: exact(env.CNYOS_EXPECTED_SOURCE_TREE, SHA40,
-      'CNYOS_BOUNDED_TREATMENT_SOURCE_TREE_INVALID'),
-    deployId: exact(env.CNYOS_EXPECTED_NETLIFY_DEPLOY_ID, DEPLOY_ID,
-      'CNYOS_BOUNDED_TREATMENT_DEPLOY_ID_INVALID'),
+    sourceCommit,
+    sourceTree,
+    deployId,
     practitionerEmail,
     publishableKey,
     password: required(env.CNYOS_STAGING_TEST_PASSWORD,
@@ -392,19 +554,22 @@ export async function loadBoundedTreatmentConfig(env = process.env, { now = () =
     netlifyToken: required(env.CNYOS_STAGING_NETLIFY_AUTH_TOKEN,
       'CNYOS_BOUNDED_TREATMENT_NETLIFY_TOKEN_REQUIRED', 8192),
     evidencePath: path.resolve(required(env.CNYOS_CONTROLLER_UAT_EVIDENCE_PATH,
-      'CNYOS_BOUNDED_TREATMENT_EVIDENCE_PATH_REQUIRED', 4096))
+      'CNYOS_BOUNDED_TREATMENT_EVIDENCE_PATH_REQUIRED', 4096)),
+    controllerRuntime,
+    runAuthorization: Object.freeze({
+      ...runAuthorization,
+      inputSha256: inputAuthorizationSha256,
+      expectedSha256: expectedAuthorizationSha256
+    }),
+    fixture
   };
-  if (env.CNYOS_TREATMENT_UAT_ACK !== BOUNDED_TREATMENT_ACK) {
-    fail('CNYOS_BOUNDED_TREATMENT_ACK_REQUIRED');
-  }
-  config.fixture = validateTreatmentFixture(fixture, { runId, practitionerEmail });
   config.immutableOrigin = `https://${config.deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`;
   const protectedLedger = validateProtectedFixtureLedger(ledgerFile.value, {
     fixture: config.fixture,
     sourceCommit: config.sourceCommit,
     sourceTree: config.sourceTree,
     deployId: config.deployId,
-    now: now()
+    now: observedNow
   });
   config.protectedLedger = Object.freeze({
     ...protectedLedger,
@@ -459,7 +624,8 @@ function validateDeploymentManifest(manifest, config) {
   exactKeys(manifest.safety,
     ['previewLocked', 'databaseLocked', 'stagingDatabaseExplicitlyAcknowledged'],
     'CNYOS_BOUNDED_TREATMENT_DEPLOY_MANIFEST_INVALID');
-  if (manifest.schemaVersion !== 1 || manifest.deploymentId !== 'chananya-clinical-staging' ||
+  if (manifest.schemaVersion !== 1 ||
+    manifest.deploymentId !== BOUNDED_TREATMENT_TARGET.deploymentId ||
     String(manifest.source.commit || '').toLowerCase() !== config.sourceCommit ||
     String(manifest.source.tree || '').toLowerCase() !== config.sourceTree ||
     manifest.source.verified !== true ||
@@ -1529,7 +1695,29 @@ export function buildEvidence(config, state, ledger, observedAt = new Date()) {
     observedAt: observedAt.toISOString(),
     syntheticOnly: true,
     realPatientDataAuthorized: false,
+    productionAuthorization: false,
     controllerOwnedRunner: true,
+    controller: Object.freeze({
+      repository: config.controllerRuntime.repository,
+      ref: config.controllerRuntime.ref,
+      commit: config.controllerRuntime.commit,
+      workflowPath: config.controllerRuntime.workflowPath,
+      workflowRef: config.controllerRuntime.workflowRef,
+      runId: config.controllerRuntime.runId,
+      runAttempt: 1,
+      policySha256: config.runAuthorization.policySha256
+    }),
+    runAuthorization: Object.freeze({
+      evidenceType: config.runAuthorization.evidenceType,
+      status: config.runAuthorization.status,
+      decision: config.runAuthorization.decision,
+      authorizedAt: config.runAuthorization.authorizedAt,
+      expiresAt: config.runAuthorization.expiresAt,
+      inputSha256: config.runAuthorization.inputSha256,
+      expectedSha256: config.runAuthorization.expectedSha256,
+      targetSha256: hash(Buffer.from(canonicalJson(BOUNDED_TREATMENT_TARGET))),
+      fixtureSha256: config.runAuthorization.run.fixtureSha256
+    }),
     source: Object.freeze({ commit: config.sourceCommit, tree: config.sourceTree }),
     deployment: state.deployment,
     canonicalPublication: state.canonicalPublication,

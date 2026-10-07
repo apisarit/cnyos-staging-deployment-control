@@ -6,7 +6,7 @@
   "provenance": "Dirty engineering working-tree bytes, including existing and new changes; not a committed release snapshot.",
   "destinationRepository": "apisarit/cnyos-staging-deployment-control",
   "activationAuthorized": false,
-  "fileCount": 101,
+  "fileCount": 103,
   "files": [
     {
       "sourcePath": "admin.html",
@@ -161,12 +161,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/controller-policy.json",
       "path": "ops/cnyos-staging-controller/controller-policy.json",
-      "bytes": 11176,
-      "inputSha256": "b6d7070b498fc71435aae50e47db6ac3db8534b4ec6766dd9c5a102263d6f810",
-      "outputSha256": "b6d7070b498fc71435aae50e47db6ac3db8534b4ec6766dd9c5a102263d6f810",
+      "bytes": 11638,
+      "inputSha256": "51fe0c2c1d515fed6ee5741298a25f70dd5266fbf3ccd80372000d2386918fe8",
+      "outputSha256": "51fe0c2c1d515fed6ee5741298a25f70dd5266fbf3ccd80372000d2386918fe8",
       "mode": "100644",
-      "inputBytes": 11176,
-      "outputBytes": 11176
+      "inputBytes": 11638,
+      "outputBytes": 11638
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/package-lock.json",
@@ -181,22 +181,22 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/package.json",
       "path": "ops/cnyos-staging-controller/package.json",
-      "bytes": 2245,
-      "inputSha256": "a36fc1fc1e834ba352fc7bd9fd7b8ebc3a1891882038abe1206372dbd174b6ab",
-      "outputSha256": "a36fc1fc1e834ba352fc7bd9fd7b8ebc3a1891882038abe1206372dbd174b6ab",
+      "bytes": 2401,
+      "inputSha256": "18328c415fb728518aace4b9c0e79f8ca2eaf1c73b1ac889ad3bd46815c2b8f9",
+      "outputSha256": "18328c415fb728518aace4b9c0e79f8ca2eaf1c73b1ac889ad3bd46815c2b8f9",
       "mode": "100644",
-      "inputBytes": 2245,
-      "outputBytes": 2245
+      "inputBytes": 2401,
+      "outputBytes": 2401
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
       "path": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
-      "bytes": 73277,
-      "inputSha256": "ff50e32ceceb770592894e352e7dd07bdcd9cb7fde054cbba99ab817bed448d7",
-      "outputSha256": "ff50e32ceceb770592894e352e7dd07bdcd9cb7fde054cbba99ab817bed448d7",
+      "bytes": 81886,
+      "inputSha256": "8d49ab4ed371f325f284b1628694c099179c7ce7b90eed01fe2ee0835f9570c1",
+      "outputSha256": "8d49ab4ed371f325f284b1628694c099179c7ce7b90eed01fe2ee0835f9570c1",
       "mode": "100644",
-      "inputBytes": 73277,
-      "outputBytes": 73277
+      "inputBytes": 81886,
+      "outputBytes": 81886
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs",
@@ -411,12 +411,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
       "path": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
-      "bytes": 11664,
-      "inputSha256": "e0915f30a3f45df487beed49b6ffc02ff2a025b5e06a76ab3923cdc452d8dfb0",
-      "outputSha256": "e0915f30a3f45df487beed49b6ffc02ff2a025b5e06a76ab3923cdc452d8dfb0",
+      "bytes": 11918,
+      "inputSha256": "6cadd86f3c572ff23f70075e6b4dcf6d7611cee1e804bc6cddfeb6740f4ee309",
+      "outputSha256": "6cadd86f3c572ff23f70075e6b4dcf6d7611cee1e804bc6cddfeb6740f4ee309",
       "mode": "100644",
-      "inputBytes": 11664,
-      "outputBytes": 11664
+      "inputBytes": 11918,
+      "outputBytes": 11918
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/scheduled-function-route-denial.mjs",
@@ -552,12 +552,11 @@
       "sourcePath": "ops/cnyos-staging-controller/test-support/uat-browser-local.mjs",
       "path": "ops/cnyos-staging-controller/test-support/uat-browser-local.mjs",
       "bytes": 45563,
-      "inputSha256": "256ede0248b4a2b9e4c5b06c7005f97483cc7c78d709150f9bea30c898a6b154",
+      "inputSha256": "6188cd4f6832c139039c228943db75b386e7e56407c8ea489a153f592bed4e78",
       "outputSha256": "6188cd4f6832c139039c228943db75b386e7e56407c8ea489a153f592bed4e78",
       "mode": "100644",
-      "inputBytes": 45513,
-      "outputBytes": 45563,
-      "adaptation": "path-only"
+      "inputBytes": 45563,
+      "outputBytes": 45563
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/authorization-foundation-security-contract.mjs",
@@ -582,12 +581,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/bounded-treatment-uat-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/bounded-treatment-uat-contract.mjs",
-      "bytes": 38684,
-      "inputSha256": "2ab5bca0e54a27b0d911dd466872da60e55f6cef55bfab64ceae048359fccf1b",
-      "outputSha256": "2ab5bca0e54a27b0d911dd466872da60e55f6cef55bfab64ceae048359fccf1b",
+      "bytes": 45325,
+      "inputSha256": "042b2e6e6499986d145abfe9b61c121b30ff107d8356632e91eebd390affa242",
+      "outputSha256": "042b2e6e6499986d145abfe9b61c121b30ff107d8356632e91eebd390affa242",
       "mode": "100644",
-      "inputBytes": 38684,
-      "outputBytes": 38684
+      "inputBytes": 45325,
+      "outputBytes": 45325
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-authenticated-uat-contract.mjs",
@@ -602,12 +601,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
-      "bytes": 230011,
-      "inputSha256": "4e1ec9604e2ca2bdf22c4e2f026b358ea56ba735140dc78279f921dcd6cacacf",
-      "outputSha256": "4e1ec9604e2ca2bdf22c4e2f026b358ea56ba735140dc78279f921dcd6cacacf",
+      "bytes": 230802,
+      "inputSha256": "22f756360b43df7271ff1ec2c5696f8fd4e8c53340c9d6d42f185a7181e67355",
+      "outputSha256": "22f756360b43df7271ff1ec2c5696f8fd4e8c53340c9d6d42f185a7181e67355",
       "mode": "100644",
-      "inputBytes": 230011,
-      "outputBytes": 230011
+      "inputBytes": 230802,
+      "outputBytes": 230802
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-function-bundle-contract.mjs",
@@ -633,34 +632,31 @@
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-access-observations-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/controller-uat-access-observations-contract.mjs",
       "bytes": 8790,
-      "inputSha256": "ef3323fdb8f3cd747b29cfe8a8b23432d93b5f6cbde28c03844cc178b01d8f1e",
+      "inputSha256": "37574c7a22bd30136995d239bd5aa3aed2e08c1350b05e8b1c0dcf47754d2a74",
       "outputSha256": "37574c7a22bd30136995d239bd5aa3aed2e08c1350b05e8b1c0dcf47754d2a74",
       "mode": "100644",
-      "inputBytes": 8750,
-      "outputBytes": 8790,
-      "adaptation": "path-only"
+      "inputBytes": 8790,
+      "outputBytes": 8790
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-browser-matrix-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-matrix-contract.mjs",
       "bytes": 22008,
-      "inputSha256": "956a1eded3f4bd94f8452d3bdd24f4ef377f56f4181aeabc687888d2eeff7ba8",
+      "inputSha256": "7e9c9eec20dbe118719037dce6d533fcd0d7de7bcf7999d6d50afe33ef51c839",
       "outputSha256": "7e9c9eec20dbe118719037dce6d533fcd0d7de7bcf7999d6d50afe33ef51c839",
       "mode": "100644",
-      "inputBytes": 21960,
-      "outputBytes": 22008,
-      "adaptation": "path-only"
+      "inputBytes": 22008,
+      "outputBytes": 22008
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-browser-read-policy-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/controller-uat-browser-read-policy-contract.mjs",
       "bytes": 11993,
-      "inputSha256": "1e1bfc5c0e5ab72a953164b99c795eafa9e84c4b7a3afc4959a0cf75d517b12e",
+      "inputSha256": "d92549007cf57009a87365a94b1e6daa13f5ab45e85d5d81930575ff83beb27d",
       "outputSha256": "d92549007cf57009a87365a94b1e6daa13f5ab45e85d5d81930575ff83beb27d",
       "mode": "100644",
-      "inputBytes": 11969,
-      "outputBytes": 11993,
-      "adaptation": "path-only"
+      "inputBytes": 11993,
+      "outputBytes": 11993
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-uat-browser-transport-contract.mjs",
@@ -1022,6 +1018,26 @@
       "outputSha256": "bff472c125e92365704f76ea585178b1bcbda8aa2402b4e96212826fc874c473",
       "mode": "100644",
       "closure": "reviewed fixture extension"
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/provision-bounded-treatment-fixture.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/provision-bounded-treatment-fixture.mjs",
+      "bytes": 47002,
+      "inputSha256": "0d2ab5e9d9e612ae4f8d07ab578fc1ab02df3e93ab5bb5d40735b302dbdf12b1",
+      "outputSha256": "0d2ab5e9d9e612ae4f8d07ab578fc1ab02df3e93ab5bb5d40735b302dbdf12b1",
+      "mode": "100644",
+      "inputBytes": 47002,
+      "outputBytes": 47002
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/provision-bounded-treatment-fixture-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/provision-bounded-treatment-fixture-contract.mjs",
+      "bytes": 31911,
+      "inputSha256": "860619cf6484bc999ef9887ccb2c031e7bd99ad651d74ebd3d7f1e9670c4bb0c",
+      "outputSha256": "860619cf6484bc999ef9887ccb2c031e7bd99ad651d74ebd3d7f1e9670c4bb0c",
+      "mode": "100644",
+      "inputBytes": 31911,
+      "outputBytes": 31911
     }
   ],
   "deploymentAuthorized": false,

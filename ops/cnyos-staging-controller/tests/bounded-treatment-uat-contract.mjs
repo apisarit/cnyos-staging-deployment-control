@@ -17,16 +17,20 @@ import {
   preflightExactDeployment,
   reconcileAmbiguousOperation,
   recheckCanonicalPublication,
+  validateBoundedTreatmentPolicyTarget,
   validateProtectedFixtureLedger,
   validateTreatmentFixture,
   writeEvidenceExclusive
 } from '../scripts/bounded-treatment-uat.mjs';
+import { POLICY, POLICY_SHA256 } from '../scripts/policy.mjs';
 
 const runId = 'treatment-uat-20261007';
 const practitionerEmail = 'synthetic.practitioner@example.invalid';
 const sourceCommit = 'b'.repeat(40);
 const sourceTree = 'c'.repeat(40);
 const deployId = 'a'.repeat(24);
+const controllerCommit = 'd'.repeat(40);
+const controllerRunId = '91000017';
 const password = 'DO_NOT_SERIALIZE_PASSWORD';
 const netlifyToken = 'DO_NOT_SERIALIZE_NETLIFY_TOKEN';
 const publishableKey = `sb_publishable_${'A'.repeat(24)}`;
@@ -121,6 +125,40 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function runAuthorizationValue(fixture) {
+  const normalized = validateTreatmentFixture(fixture, { runId, practitionerEmail });
+  return {
+    schemaVersion: 1,
+    evidenceType: 'cnyos_staging_bounded_treatment_run_authorization',
+    status: 'authorized',
+    decision: 'authorize_exactly_two_synthetic_treatment_writes',
+    scope: 'cnyos_staging_only',
+    syntheticOnly: true,
+    realPatientDataAuthorized: false,
+    productionAuthorization: false,
+    authorizedAt: '2026-10-07T12:00:00.000Z',
+    expiresAt: '2026-10-07T12:30:00.000Z',
+    policySha256: POLICY_SHA256,
+    controller: {
+      repository: POLICY.controller.repository,
+      ref: POLICY.controller.protectedRef,
+      commit: controllerCommit,
+      workflowPath: POLICY.controller.releaseWorkflowPath,
+      workflowRef: `${POLICY.controller.repository}/${POLICY.controller.releaseWorkflowPath}@${POLICY.controller.protectedRef}`,
+      runId: controllerRunId,
+      runAttempt: 1
+    },
+    target: clone(BOUNDED_TREATMENT_TARGET),
+    run: {
+      runId,
+      sourceCommit,
+      sourceTree,
+      deployId,
+      fixtureSha256: canonicalFixtureSha256(normalized)
+    }
+  };
+}
+
 function assertCode(fn, code) {
   assert.throws(fn, error => error instanceof BoundedTreatmentError && error.code === code);
 }
@@ -135,7 +173,18 @@ function assertBounded(fn) {
 
 function envFor(fixture, ledgerPath, ledgerSha256,
   evidencePath = '/tmp/cnyos-bounded-treatment-evidence.json') {
+  const runAuthorization = JSON.stringify(runAuthorizationValue(fixture));
   return {
+    GITHUB_REPOSITORY: POLICY.controller.repository,
+    GITHUB_RUN_ID: controllerRunId,
+    GITHUB_RUN_ATTEMPT: '1',
+    GITHUB_REF_PROTECTED: 'true',
+    GITHUB_REF: POLICY.controller.protectedRef,
+    GITHUB_SHA: controllerCommit,
+    GITHUB_WORKFLOW_REF: `${POLICY.controller.repository}/${POLICY.controller.releaseWorkflowPath}@${POLICY.controller.protectedRef}`,
+    CNYOS_CONTROLLER_EXPECTED_REPOSITORY: POLICY.controller.repository,
+    CNYOS_CONTROLLER_PROTECTED_REF: POLICY.controller.protectedRef,
+    CNYOS_CONTROLLER_WORKFLOW_PATH: POLICY.controller.releaseWorkflowPath,
     CNYOS_TREATMENT_UAT_RUN_ID: runId,
     CNYOS_EXPECTED_SOURCE_COMMIT: sourceCommit,
     CNYOS_EXPECTED_SOURCE_TREE: sourceTree,
@@ -146,9 +195,24 @@ function envFor(fixture, ledgerPath, ledgerSha256,
     CNYOS_STAGING_NETLIFY_AUTH_TOKEN: netlifyToken,
     CNYOS_CONTROLLER_UAT_EVIDENCE_PATH: evidencePath,
     CNYOS_TREATMENT_UAT_ACK: BOUNDED_TREATMENT_ACK,
+    CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON: runAuthorization,
+    CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256:
+      crypto.createHash('sha256').update(runAuthorization).digest('hex'),
     CNYOS_STAGING_TREATMENT_FIXTURE_JSON: JSON.stringify(fixture),
     CNYOS_PROTECTED_TREATMENT_FIXTURE_LEDGER_PATH: ledgerPath,
     CNYOS_EXPECTED_TREATMENT_FIXTURE_LEDGER_SHA256: ledgerSha256
+  };
+}
+
+function withRunAuthorization(environment, mutate) {
+  const authorization = JSON.parse(environment.CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON);
+  mutate(authorization);
+  const raw = JSON.stringify(authorization);
+  return {
+    ...environment,
+    CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON: raw,
+    CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256:
+      crypto.createHash('sha256').update(raw).digest('hex')
   };
 }
 
@@ -302,10 +366,20 @@ function expectedRow(fixture, session, ordinal) {
   };
 }
 
+assert.deepEqual(BOUNDED_TREATMENT_TARGET, POLICY.boundedTreatmentUatTarget);
 assert.equal(BOUNDED_TREATMENT_TARGET.origin, 'https://cnyos-clinical-staging.netlify.app');
 assert.equal(BOUNDED_TREATMENT_TARGET.netlifySiteId,
   '887e058b-6e13-461f-b3c7-ae096b7046fe');
+assert.notEqual(BOUNDED_TREATMENT_TARGET.origin, POLICY.target.netlifyOrigin);
+assert.notEqual(BOUNDED_TREATMENT_TARGET.netlifySiteId, POLICY.target.netlifySiteId);
 assert.notEqual(BOUNDED_TREATMENT_TARGET.origin, 'https://cnyos.cloud');
+const oldPrimaryTarget = clone(BOUNDED_TREATMENT_TARGET);
+oldPrimaryTarget.origin = POLICY.target.netlifyOrigin;
+oldPrimaryTarget.netlifySiteId = POLICY.target.netlifySiteId;
+oldPrimaryTarget.netlifySiteName = POLICY.target.netlifySiteName;
+oldPrimaryTarget.deploymentId = POLICY.target.deploymentId;
+assertCode(() => validateBoundedTreatmentPolicyTarget(oldPrimaryTarget),
+  'CNYOS_BOUNDED_TREATMENT_POLICY_TARGET_INVALID');
 
 const validated = validateTreatmentFixture(fixtureValue(), { runId, practitionerEmail });
 assert.equal(validated.sessions.length, 2);
@@ -373,6 +447,15 @@ const config = await loadBoundedTreatmentConfig(baseEnvironment, { now: () => no
 assert.equal(config.password, password);
 assert.equal(config.netlifyToken, netlifyToken);
 assert.equal(config.publishableKey, publishableKey);
+assert.equal(config.controllerRuntime.repository, POLICY.controller.repository);
+assert.equal(config.controllerRuntime.ref, POLICY.controller.protectedRef);
+assert.equal(config.controllerRuntime.commit, controllerCommit);
+assert.equal(config.controllerRuntime.runId, controllerRunId);
+assert.equal(config.runAuthorization.status, 'authorized');
+assert.equal(config.runAuthorization.controller.commit, controllerCommit);
+assert.equal(config.runAuthorization.run.fixtureSha256, canonicalFixtureSha256(config.fixture));
+assert.equal(config.runAuthorization.inputSha256,
+  baseEnvironment.CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256);
 assert.equal(config.fixture.practitioner.role, 'practitioner');
 assert.equal(config.protectedLedger.entryId, 'fixture:treatment:20261007');
 assert.equal(config.protectedLedger.sourceFileSha256, ledgerFileSha256);
@@ -385,6 +468,34 @@ await assertRejectCode(() => loadBoundedTreatmentConfig({
 await assertRejectCode(() => loadBoundedTreatmentConfig({
   ...baseEnvironment, CNYOS_EXPECTED_SUPABASE_PUBLISHABLE_KEY: 'caller-selected-key'
 }, { now: () => nowValue }), 'CNYOS_BOUNDED_TREATMENT_SUPABASE_KEY_INVALID');
+await assertRejectCode(() => loadBoundedTreatmentConfig({
+  ...baseEnvironment, GITHUB_REF: 'refs/pull/17/merge'
+}, { now: () => nowValue }), 'CNYOS_CONTROLLER_REF_MISMATCH');
+await assertRejectCode(() => loadBoundedTreatmentConfig(withRunAuthorization(baseEnvironment,
+  value => { value.controller.commit = 'e'.repeat(40); }), { now: () => nowValue }),
+  'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
+await assertRejectCode(() => loadBoundedTreatmentConfig(withRunAuthorization(baseEnvironment,
+  value => {
+    value.target.origin = POLICY.target.netlifyOrigin;
+    value.target.netlifySiteId = POLICY.target.netlifySiteId;
+    value.target.netlifySiteName = POLICY.target.netlifySiteName;
+    value.target.deploymentId = POLICY.target.deploymentId;
+  }), { now: () => nowValue }), 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
+const missingRunAuthorizationEnvironment = { ...baseEnvironment };
+delete missingRunAuthorizationEnvironment.CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON;
+await assertRejectCode(() => loadBoundedTreatmentConfig(missingRunAuthorizationEnvironment,
+  { now: () => nowValue }), 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_REQUIRED');
+const invalidRunAuthorizationRaw = '{}';
+await assertRejectCode(() => loadBoundedTreatmentConfig({
+  ...baseEnvironment,
+  CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON: invalidRunAuthorizationRaw,
+  CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256:
+    crypto.createHash('sha256').update(invalidRunAuthorizationRaw).digest('hex')
+}, { now: () => nowValue }), 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
+await assertRejectCode(() => loadBoundedTreatmentConfig({
+  ...baseEnvironment,
+  CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256: '0'.repeat(64)
+}, { now: () => nowValue }), 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_DIGEST_MISMATCH');
 const missingLedgerEnvironment = { ...baseEnvironment };
 delete missingLedgerEnvironment.CNYOS_PROTECTED_TREATMENT_FIXTURE_LEDGER_PATH;
 await assertRejectCode(() => loadBoundedTreatmentConfig(missingLedgerEnvironment,
@@ -877,6 +988,19 @@ assert(!serialized.includes(publishableKey));
 assert(!serialized.includes(accessToken));
 assert(!serialized.includes(ledgerPath));
 assert.equal(evidence.status, 'FAIL');
+assert.equal(evidence.productionAuthorization, false);
+assert.equal(evidence.controller.repository, POLICY.controller.repository);
+assert.equal(evidence.controller.ref, POLICY.controller.protectedRef);
+assert.equal(evidence.controller.commit, controllerCommit);
+assert.equal(evidence.controller.runId, controllerRunId);
+assert.equal(evidence.controller.policySha256, POLICY_SHA256);
+assert.equal(evidence.runAuthorization.status, 'authorized');
+assert.equal(evidence.runAuthorization.inputSha256,
+  baseEnvironment.CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256);
+assert.equal(evidence.runAuthorization.expectedSha256,
+  baseEnvironment.CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256);
+assert.equal(evidence.runAuthorization.fixtureSha256, canonicalFixtureSha256(fixture));
+assert.equal(serialized.includes('CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON'), false);
 assert.equal(evidence.fixture.protectedLedgerEntryId, 'fixture:treatment:20261007');
 assert.equal(evidence.fixture.protectedLedgerFileSha256, ledgerFileSha256);
 assert.equal(evidence.fixture.protectedLedgerExpectedSha256, ledgerFileSha256);

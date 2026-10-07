@@ -8,6 +8,7 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 const FOUNDATION_SCRIPTS = Object.freeze([
   'scripts/bounded-treatment-uat.mjs',
+  'scripts/provision-bounded-treatment-fixture.mjs',
   'scripts/materialize-function-recipe-input.mjs',
   'scripts/create-function-comparison-handoff.mjs',
   'scripts/controller-uat-access-observations.mjs',
@@ -145,6 +146,11 @@ export const ACTIVATION_PAIRS = Object.freeze([
 ]);
 
 const BASE_TESTS = Object.freeze([
+  Object.freeze({
+    id: 'bounded-treatment-fixture',
+    path: 'tests/provision-bounded-treatment-fixture-contract.mjs',
+    marker: 'single bounded treatment fixture provisioner contract: ok'
+  }),
   Object.freeze({
     id: 'bounded-treatment-uat',
     path: 'tests/bounded-treatment-uat-contract.mjs',
