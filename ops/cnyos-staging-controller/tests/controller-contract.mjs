@@ -337,7 +337,8 @@ assert.equal(packageManifest.scripts.test,
   'node tests/private-draft-lifecycle-contract.mjs && ' +
   'node tests/netlify-exclusive-publisher-contract.mjs && ' +
   'node tests/rollback-readiness-contract.mjs && ' +
-  'node tests/external-broker-trust-boundaries-contract.mjs');
+  'node tests/external-broker-trust-boundaries-contract.mjs && ' +
+  'node tests/bounded-treatment-uat-contract.mjs');
 const defaultTestFiles = packageManifest.scripts.test.split(' && ').map(command => {
   assert.match(command, /^node tests\/[a-z0-9-]+-contract\.mjs$/,
     'default contracts must run explicitly without shell fallbacks');
@@ -360,7 +361,9 @@ assert.doesNotMatch(packageManifest.scripts.test, /test:activation|run-activatio
 assert.equal(lock.lockfileVersion, 3);
 assert.equal(lock.packages[''].dependencies['@netlify/blobs'], '10.7.13');
 assert.equal(lock.packages[''].dependencies.qrcode, '1.5.4');
-assert.equal(lock.packages[''].devDependencies, undefined);
+assert.deepEqual(lock.packages[''].devDependencies, { playwright: '1.55.1' });
+assert.equal(lock.packages['node_modules/playwright']?.version, '1.55.1');
+assert.equal(lock.packages['node_modules/playwright-core']?.version, '1.55.1');
 if (POLICY.publishing.netlifyCliVersion === '__AUDITED_NETLIFY_CLI_VERSION__') {
   assert.equal(lock.packages['node_modules/netlify-cli'], undefined);
 } else {
@@ -431,6 +434,7 @@ for (const { id, test } of protectedActivationPairs) {
   assert.equal(contract?.marker, `CNYOS activation contract ${id}: passed`);
 }
 const protectedFoundationScripts = [
+  'bounded-treatment-uat.mjs',
   'materialize-function-recipe-input.mjs',
   'create-function-comparison-handoff.mjs',
   'controller-uat-access-observations.mjs',
@@ -454,6 +458,7 @@ assert.deepEqual(CLOSED_WORLD_SCRIPT_INVENTORY, [...new Set([
   ...protectedActivationPairs.flatMap(pair => pair.scripts.map(item => path.posix.basename(item)))
 ])].sort());
 assert.deepEqual(CLOSED_WORLD_TEST_INVENTORY, [
+  'bounded-treatment-uat-contract.mjs',
   'function-recipe-input-contract.mjs',
   'function-comparison-handoff-contract.mjs',
   'controller-uat-access-observations-contract.mjs',
