@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { POLICY, POLICY_SHA256, assertControllerRuntime } from './policy.mjs';
+import { assertVerifiedLocalControllerRuntime } from './local-controller-runtime.mjs';
 
 export const BOUNDED_TREATMENT_ACK =
   'I_AUTHORIZE_EXACTLY_TWO_SYNTHETIC_TREATMENT_WRITES';
@@ -19,6 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$/;
 const MAX_JSON_BYTES = 64 * 1024;
+const MAX_DEPLOYMENT_BINDING_BYTES = 2 * 1024 * 1024;
 const LEDGER_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const NETLIFY_API = 'https://api.netlify.com/api/v1';
 const TREATMENT_RPC_PATH = '/rest/v1/rpc/create_clinical_treatment_session';
@@ -401,8 +403,140 @@ async function readProtectedFixtureLedger(env) {
   }
 }
 
-function boundedControllerRuntime(env) {
+function assertFreshEvidenceTimestamp(timestamp, now, code) {
+  const observedNow = now instanceof Date ? now : new Date(now);
+  const nowMs = observedNow.getTime();
+  const evidenceMs = Date.parse(timestamp);
+  if (!Number.isFinite(nowMs) || evidenceMs > nowMs || nowMs - evidenceMs > LEDGER_MAX_AGE_MS) {
+    fail(code);
+  }
+}
+
+export function validateDeploymentBindingEvidence(value, {
+  sourceCommit,
+  sourceTree,
+  deployId,
+  now = new Date()
+}) {
+  const code = 'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_INVALID';
+  exactKeys(value, [
+    'schemaVersion', 'evidenceType', 'environment', 'syntheticOnly', 'authorization',
+    'productionEligible', 'productionAuthorization', 'realPatientDataAuthorized',
+    'databaseMutationPerformed', 'authenticatedDatabaseBehaviorVerified', 'observedAt',
+    'siteOrigin', 'netlifySiteId', 'netlifyDeployId', 'exactDeployOrigin',
+    'deploymentId', 'databaseProjectRef', 'clinicId', 'clinicCode', 'sourceCommit',
+    'sourceTree', 'tenantConfigSha256', 'deployManifestSha256',
+    'runtimePublishManifestSha256', 'artifactSha256', 'artifactFileCount',
+    'deploymentClass', 'previewLocked', 'databaseLocked',
+    'stagingDatabaseExplicitlyAcknowledged', 'browserDatabaseConfigured', 'authHealth',
+    'schedules', 'scheduledRouteDenials', 'routes', 'forbiddenPaths'
+  ], code);
+  const observedAt = canonicalTimestamp(value.observedAt, code);
+  assertFreshEvidenceTimestamp(observedAt, now,
+    'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_EXPIRED');
+  const exactDeployOrigin = `https://${deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`;
+  if (value.schemaVersion !== 1 ||
+    value.evidenceType !== 'unlocked_staging_deployment_observation' ||
+    value.environment !== 'staging' || value.syntheticOnly !== true ||
+    value.authorization !== false || value.productionEligible !== false ||
+    value.productionAuthorization !== false || value.realPatientDataAuthorized !== false ||
+    value.databaseMutationPerformed !== false ||
+    value.authenticatedDatabaseBehaviorVerified !== false ||
+    value.siteOrigin !== BOUNDED_TREATMENT_TARGET.origin ||
+    String(value.netlifySiteId || '').toLowerCase() !== BOUNDED_TREATMENT_TARGET.netlifySiteId ||
+    String(value.netlifyDeployId || '').toLowerCase() !== deployId ||
+    value.exactDeployOrigin !== exactDeployOrigin ||
+    value.deploymentId !== BOUNDED_TREATMENT_TARGET.deploymentId ||
+    value.databaseProjectRef !== BOUNDED_TREATMENT_TARGET.supabaseProjectRef ||
+    String(value.clinicId || '').toLowerCase() !== BOUNDED_TREATMENT_TARGET.clinicId ||
+    value.clinicCode !== BOUNDED_TREATMENT_TARGET.clinicCode ||
+    String(value.sourceCommit || '').toLowerCase() !== sourceCommit ||
+    String(value.sourceTree || '').toLowerCase() !== sourceTree ||
+    !['tenantConfigSha256', 'deployManifestSha256', 'runtimePublishManifestSha256',
+      'artifactSha256'].every(name => SHA256.test(String(value[name] || '').toLowerCase())) ||
+    !Number.isSafeInteger(value.artifactFileCount) || value.artifactFileCount < 1 ||
+    value.artifactFileCount > 10_000 || value.deploymentClass !== 'dedicated-staging' ||
+    value.previewLocked !== false || value.databaseLocked !== false ||
+    value.stagingDatabaseExplicitlyAcknowledged !== true ||
+    value.browserDatabaseConfigured !== true) fail(code);
+  exactKeys(value.authHealth, ['reachable', 'service'], code);
+  if (value.authHealth.reachable !== true || value.authHealth.service !== 'GoTrue' ||
+    !Array.isArray(value.schedules) || !Array.isArray(value.scheduledRouteDenials) ||
+    !Array.isArray(value.routes) || value.routes.length < 1 || value.routes.length > 2_000 ||
+    !Array.isArray(value.forbiddenPaths) || value.forbiddenPaths.length < 1 ||
+    value.forbiddenPaths.length > 2_000) fail(code);
+  const routeKeys = new Set();
+  for (const route of value.routes) {
+    exactKeys(route, ['origin', 'path', 'status'], code);
+    if (!['canonical', 'exact-deploy'].includes(route.origin) ||
+      !/^\/[A-Za-z0-9._/-]*$/.test(route.path) || route.status !== 200) fail(code);
+    const key = `${route.origin}:${route.path}`;
+    if (routeKeys.has(key)) fail(code);
+    routeKeys.add(key);
+  }
+  for (const key of [
+    'canonical:/login.html', 'exact-deploy:/login.html',
+    'canonical:/clinical-v3.html', 'exact-deploy:/clinical-v3.html'
+  ]) {
+    if (!routeKeys.has(key)) fail(code);
+  }
+  const forbiddenKeys = new Set();
+  for (const item of value.forbiddenPaths) {
+    exactKeys(item, ['path', 'status'], code);
+    if (!/^\/[A-Za-z0-9._/-]+$/.test(item.path) || item.status !== 404 ||
+      forbiddenKeys.has(item.path)) fail(code);
+    forbiddenKeys.add(item.path);
+  }
+  return Object.freeze({
+    observedAt,
+    sourceCommit,
+    sourceTree,
+    deployId,
+    exactDeployOrigin,
+    artifactSha256: String(value.artifactSha256).toLowerCase(),
+    artifactFileCount: value.artifactFileCount,
+    deployManifestSha256: String(value.deployManifestSha256).toLowerCase(),
+    runtimePublishManifestSha256: String(value.runtimePublishManifestSha256).toLowerCase()
+  });
+}
+
+async function readDeploymentBindingEvidence(env, identity, observedNow) {
+  const rawPath = String(env.CNYOS_DEPLOYMENT_BINDING_EVIDENCE_PATH || '').trim();
+  const rawDigest = String(env.CNYOS_EXPECTED_DEPLOYMENT_BINDING_EVIDENCE_SHA256 || '').trim();
+  if (!rawPath && !rawDigest) return null;
+  if (!rawPath || !rawDigest || !path.isAbsolute(rawPath) || !SHA256.test(rawDigest.toLowerCase())) {
+    fail('CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_INPUT_INVALID');
+  }
+  let handle;
   try {
+    handle = await fs.open(rawPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size < 2 || stat.size > MAX_DEPLOYMENT_BINDING_BYTES ||
+      (stat.mode & 0o077) !== 0 || (stat.mode & 0o400) === 0) {
+      fail('CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_FILE_INVALID');
+    }
+    const bytes = await handle.readFile();
+    if (bytes.length !== stat.size || hash(bytes) !== rawDigest.toLowerCase()) {
+      fail('CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_DIGEST_MISMATCH');
+    }
+    let value;
+    try { value = JSON.parse(bytes.toString('utf8')); }
+    catch { fail('CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_INVALID'); }
+    return Object.freeze({
+      ...validateDeploymentBindingEvidence(value, { ...identity, now: observedNow }),
+      inputSha256: rawDigest.toLowerCase()
+    });
+  } catch (error) {
+    if (error instanceof BoundedTreatmentError) throw error;
+    fail('CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_FILE_INVALID');
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+function boundedControllerRuntime(env, controllerRuntime = null) {
+  try {
+    if (controllerRuntime) return assertVerifiedLocalControllerRuntime(controllerRuntime);
     return assertControllerRuntime(env, { requireActor: false });
   } catch (error) {
     const code = String(error?.message || '');
@@ -482,7 +616,10 @@ export function validateBoundedTreatmentRunAuthorization(value, {
   });
 }
 
-export async function loadBoundedTreatmentConfig(env = process.env, { now = () => new Date() } = {}) {
+export async function loadBoundedTreatmentConfig(env = process.env, {
+  now = () => new Date(),
+  controllerRuntime = null
+} = {}) {
   const observedNow = now();
   if (!(observedNow instanceof Date) || Number.isNaN(observedNow.getTime())) {
     fail('CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
@@ -513,7 +650,12 @@ export async function loadBoundedTreatmentConfig(env = process.env, { now = () =
     'CNYOS_BOUNDED_TREATMENT_SOURCE_TREE_INVALID');
   const deployId = exact(env.CNYOS_EXPECTED_NETLIFY_DEPLOY_ID, DEPLOY_ID,
     'CNYOS_BOUNDED_TREATMENT_DEPLOY_ID_INVALID');
-  const controllerRuntime = boundedControllerRuntime(env);
+  const deploymentBindingEvidence = await readDeploymentBindingEvidence(env, {
+    sourceCommit,
+    sourceTree,
+    deployId
+  }, observedNow);
+  const verifiedControllerRuntime = boundedControllerRuntime(env, controllerRuntime);
   const rawAuthorization = required(env.CNYOS_TREATMENT_UAT_RUN_AUTHORIZATION_JSON,
     'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_REQUIRED', MAX_JSON_BYTES);
   const expectedAuthorizationSha256 = exact(
@@ -533,7 +675,7 @@ export async function loadBoundedTreatmentConfig(env = process.env, { now = () =
     fail('CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_INVALID');
   }
   const runAuthorization = validateBoundedTreatmentRunAuthorization(authorizationValue, {
-    runtime: controllerRuntime,
+    runtime: verifiedControllerRuntime,
     runId,
     sourceCommit,
     sourceTree,
@@ -555,7 +697,8 @@ export async function loadBoundedTreatmentConfig(env = process.env, { now = () =
       'CNYOS_BOUNDED_TREATMENT_NETLIFY_TOKEN_REQUIRED', 8192),
     evidencePath: path.resolve(required(env.CNYOS_CONTROLLER_UAT_EVIDENCE_PATH,
       'CNYOS_BOUNDED_TREATMENT_EVIDENCE_PATH_REQUIRED', 4096)),
-    controllerRuntime,
+    deploymentBindingEvidence,
+    controllerRuntime: verifiedControllerRuntime,
     runAuthorization: Object.freeze({
       ...runAuthorization,
       inputSha256: inputAuthorizationSha256,
@@ -638,7 +781,10 @@ function validateDeploymentManifest(manifest, config) {
   return manifest;
 }
 
-export async function preflightExactDeployment(config, { fetchImpl = fetch } = {}) {
+export async function preflightExactDeployment(config, {
+  fetchImpl = fetch,
+  now = () => new Date()
+} = {}) {
   const site = (await jsonGet(fetchImpl,
     `${NETLIFY_API}/sites/${BOUNDED_TREATMENT_TARGET.netlifySiteId}`,
     { token: config.netlifyToken })).value;
@@ -651,6 +797,9 @@ export async function preflightExactDeployment(config, { fetchImpl = fetch } = {
 
   const deploy = (await jsonGet(fetchImpl,
     `${NETLIFY_API}/deploys/${config.deployId}`, { token: config.netlifyToken })).value;
+  const providerCommitRefPresent = deploy?.commit_ref !== null &&
+    deploy?.commit_ref !== undefined && String(deploy.commit_ref).length > 0;
+  const providerSourceCommit = String(deploy?.commit_ref || '').trim().toLowerCase();
   if (!isPlainObject(deploy) || String(deploy.id || '').toLowerCase() !== config.deployId ||
     String(deploy.site_id || '').toLowerCase() !== BOUNDED_TREATMENT_TARGET.netlifySiteId ||
     deploy.state !== 'ready' || deploy.context !== 'production' ||
@@ -658,7 +807,33 @@ export async function preflightExactDeployment(config, { fetchImpl = fetch } = {
     !Number.isFinite(Date.parse(deploy.published_at || ''))) {
     fail('CNYOS_BOUNDED_TREATMENT_DEPLOY_METADATA_MISMATCH');
   }
-  if (deploy.commit_ref != null && String(deploy.commit_ref).toLowerCase() !== config.sourceCommit) {
+  // The deployed manifest is controlled by the application artifact, so its
+  // self-declared source fields cannot prove which Git commit Netlify built.
+  // Prefer provider-owned Git identity. A manual deploy may instead present a
+  // fresh, digest-pinned observation generated outside this PR that proves the
+  // clean exact checkout produced the complete Netlify file inventory.
+  let sourceIdentity;
+  if (providerCommitRefPresent) {
+    if (!SHA40.test(providerSourceCommit) || providerSourceCommit !== config.sourceCommit) {
+      fail('CNYOS_BOUNDED_TREATMENT_DEPLOY_COMMIT_MISMATCH');
+    }
+    sourceIdentity = Object.freeze({
+      kind: 'netlify_commit_ref',
+      commit: providerSourceCommit,
+      tree: config.sourceTree
+    });
+  } else if (config.deploymentBindingEvidence) {
+    assertFreshEvidenceTimestamp(config.deploymentBindingEvidence.observedAt, now(),
+      'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_EXPIRED');
+    sourceIdentity = Object.freeze({
+      kind: 'trusted_source_derived_deploy_binding',
+      commit: config.deploymentBindingEvidence.sourceCommit,
+      tree: config.deploymentBindingEvidence.sourceTree,
+      evidenceSha256: config.deploymentBindingEvidence.inputSha256,
+      artifactSha256: config.deploymentBindingEvidence.artifactSha256,
+      artifactFileCount: config.deploymentBindingEvidence.artifactFileCount
+    });
+  } else {
     fail('CNYOS_BOUNDED_TREATMENT_DEPLOY_COMMIT_MISMATCH');
   }
 
@@ -687,6 +862,7 @@ export async function preflightExactDeployment(config, { fetchImpl = fetch } = {
     publishedAt: deploy.published_at,
     manifestFileSha1: String(manifestFile.sha).toLowerCase(),
     manifestSha256: hash(manifestResult.bytes),
+    sourceIdentity,
     sourceCommit: config.sourceCommit,
     sourceTree: config.sourceTree
   });
@@ -777,6 +953,28 @@ export class TreatmentWriteLedger {
       ? scope.publishableKey
       : null;
     this.accessTokenSha256 = null;
+    this.onTreatmentWriteDispatch = typeof scope.onTreatmentWriteDispatch === 'function'
+      ? scope.onTreatmentWriteDispatch
+      : null;
+    this.assertTreatmentWriteAuthorized =
+      typeof scope.assertTreatmentWriteAuthorized === 'function'
+        ? scope.assertTreatmentWriteAuthorized
+        : null;
+  }
+
+  async beforeTreatmentWriteDispatch(record) {
+    const dispatch = Object.freeze({
+      ordinal: record.ordinal,
+      operationId: record.operationId,
+      payloadSha256: record.payloadSha256
+    });
+    if (this.onTreatmentWriteDispatch) await this.onTreatmentWriteDispatch(dispatch);
+    // This is deliberately the final operation before route.fetch. In
+    // particular, it runs after any awaited durable dispatch journal hook so
+    // an authorization cannot silently expire while that hook is pending.
+    if (this.assertTreatmentWriteAuthorized) {
+      await this.assertTreatmentWriteAuthorized(dispatch);
+    }
   }
 
   checkedHeaders(parsed, resourceType, headers, expectedResourceType, semanticHeaders,
@@ -1351,13 +1549,18 @@ export async function installNetworkGuard(context, ledger) {
     if (decision.kind === 'treatment-write') {
       const operationId = decision.record.operationId;
       try {
+        // A controller may durably latch the mutation phase here. The callback
+        // completes before route.fetch, so a crash or signal can never make an
+        // already-dispatched treatment write look like a definite pre-write failure.
+        await ledger.beforeTreatmentWriteDispatch(decision.record);
         const response = await route.fetch({ headers: prepared.dispatchHeaders,
           maxRedirects: 0, maxRetries: 0 });
         const body = await response.body();
         ledger.response(operationId, response.status(), body);
         await route.fulfill({ response, body });
-      } catch {
+      } catch (error) {
         ledger.failed(operationId);
+        if (error instanceof BoundedTreatmentError) ledger.block(error.code);
         await route.abort('failed');
       }
       return;
@@ -1612,10 +1815,35 @@ export function classifyTreatmentFailure(error, state, ledger, fixture) {
   });
 }
 
+export function assertBoundedTreatmentAuthorizationActive(config, observedAt = new Date()) {
+  const code = 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_EXPIRED';
+  const observed = observedAt instanceof Date ? observedAt : new Date(observedAt);
+  const observedMs = observed.getTime();
+  const authorizedAtMs = Date.parse(config?.runAuthorization?.authorizedAt || '');
+  const expiresAtMs = Date.parse(config?.runAuthorization?.expiresAt || '');
+  if (!Number.isFinite(observedMs) || !Number.isFinite(authorizedAtMs) ||
+    !Number.isFinite(expiresAtMs) || observedMs < authorizedAtMs || observedMs >= expiresAtMs) {
+    fail(code);
+  }
+  return true;
+}
+
+const BROWSER_ENVIRONMENT_ALLOWLIST = Object.freeze([
+  'CI', 'DISPLAY', 'HOME', 'LANG', 'LC_ALL', 'PATH', 'PLAYWRIGHT_BROWSERS_PATH',
+  'TMPDIR', 'TZ', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR'
+]);
+
+export function boundedTreatmentBrowserEnvironment(env = process.env) {
+  return Object.freeze(Object.fromEntries(BROWSER_ENVIRONMENT_ALLOWLIST
+    .filter(name => typeof env[name] === 'string' && env[name].length > 0)
+    .map(name => [name, env[name]])));
+}
+
 export async function executeBoundedTreatmentUat(config, {
   fetchImpl = fetch,
   chromiumImpl = null,
-  now = () => new Date()
+  now = () => new Date(),
+  onTreatmentWriteDispatch = null
 } = {}) {
   const state = {
     startedAt: now().toISOString(),
@@ -1636,17 +1864,24 @@ export async function executeBoundedTreatmentUat(config, {
     practitionerEmail: config.practitionerEmail,
     password: config.password,
     publishableKey: config.publishableKey,
-    appOrigin: config.immutableOrigin
+    appOrigin: config.immutableOrigin,
+    onTreatmentWriteDispatch,
+    assertTreatmentWriteAuthorized: () =>
+      assertBoundedTreatmentAuthorizationActive(config, now())
   });
   try {
-    state.deployment = await preflightExactDeployment(config, { fetchImpl });
+    state.deployment = await preflightExactDeployment(config, { fetchImpl, now });
     const chromium = chromiumImpl || (await import('playwright')).chromium;
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      env: boundedTreatmentBrowserEnvironment(process.env)
+    });
 
     let first = await openClinicalContext(browser, config, ledger);
     try {
       state.identity = first.identity;
       await browserFixturePreflight(first.page, config.fixture);
+      assertBoundedTreatmentAuthorizationActive(config, now());
       state.writes.push(await submitSession(first.page, config, ledger,
         config.fixture.sessions[0], 1));
     } finally { await first.context.close(); }
@@ -1655,6 +1890,7 @@ export async function executeBoundedTreatmentUat(config, {
     try {
       const firstRows = await assertReadback(second.page, config.fixture, 1);
       state.readbacks.push(sanitizedReadback(firstRows[0], config.fixture.sessions[0]));
+      assertBoundedTreatmentAuthorizationActive(config, now());
       state.writes.push(await submitSession(second.page, config, ledger,
         config.fixture.sessions[1], 2));
     } finally { await second.context.close(); }

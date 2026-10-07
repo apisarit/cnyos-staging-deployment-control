@@ -35,7 +35,7 @@ try {
   const candidateCommit = commit();
   const snapshot = await readFunctionBundleCandidateSnapshot(candidateDirectory, candidateCommit);
   const selected = selectFunctionRecipeInput(snapshot);
-  assert.equal(selected.files.length, 13);
+  assert.equal(selected.files.length, EXPECTED_FUNCTION_NAMES.length + 2);
   assert.deepEqual(selected.files.map(file => file.path), [...sourceBytes.keys()].sort());
   assert.throws(() => selectFunctionRecipeInput({ ...snapshot, blobs: [...snapshot.blobs, snapshot.blobs.find(file => file.path === 'platform-config.js')] }), /SOURCE_LAYOUT/);
   assert.throws(() => selectFunctionRecipeInput({ ...snapshot, blobs: snapshot.blobs.map(file => file.path === 'platform-config.js' ? { ...file, bytes: Buffer.alloc(16 * 1024 * 1024 + 1) } : file) }), /SOURCE_SIZE/);
@@ -99,7 +99,7 @@ try {
   const handoff = await createFunctionComparisonHandoff({ ...options, firstBuildDirectory: buildDirs[0], secondBuildDirectory: buildDirs[1],
     inputManifestPath: prepared.inputManifestPath, recipePath, dependencyLockPath, expectedInputManifestSha256: prepared.inputManifestSha256,
     expectedRecipeSha256: sha256(recipe), expectedDependencyLockSha256: sha256(lock), outputDirectory: path.join(root, 'handoff') });
-  assert.equal(handoff.files.length, 11); assert.equal(handoff.authorization, false); assert.equal(handoff.producerEligible, false);
+  assert.equal(handoff.files.length, EXPECTED_FUNCTION_NAMES.length); assert.equal(handoff.authorization, false); assert.equal(handoff.producerEligible, false);
 
   const cliOutput = path.join(root, 'cli');
   const args = ['--candidate-directory', candidateDirectory, '--candidate-commit', candidateCommit, '--output-directory', cliOutput];
@@ -107,7 +107,7 @@ try {
   assert.throws(() => parseFunctionRecipeInputArguments([...args, '--activate']), /ARGUMENTS/);
   const child = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: '/nonexistent' } });
   assert.equal(child.status, 0, child.stderr); assert.equal(child.stderr, '');
-  assert.equal(child.stdout, JSON.stringify({ kind: 'immutable-function-recipe-input', fileCount: 13,
+  assert.equal(child.stdout, JSON.stringify({ kind: 'immutable-function-recipe-input', fileCount: EXPECTED_FUNCTION_NAMES.length + 2,
     inputManifestSha256: prepared.inputManifestSha256 }) + '\n');
   assert.equal(child.stdout.includes(root), false);
   const deniedCliOutput = path.join(root, 'cli-denied');

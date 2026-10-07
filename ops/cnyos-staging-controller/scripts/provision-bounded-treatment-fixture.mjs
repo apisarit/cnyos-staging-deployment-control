@@ -11,6 +11,10 @@ import {
   canonicalJson,
   validateTreatmentFixture
 } from './bounded-treatment-uat.mjs';
+import {
+  LOCAL_CONTROLLER_ENTRYPOINT,
+  assertVerifiedLocalControllerRuntime
+} from './local-controller-runtime.mjs';
 import { POLICY, POLICY_SHA256, assertControllerRuntime } from './policy.mjs';
 
 export const SINGLE_FIXTURE_PROVISION_ACK =
@@ -119,7 +123,8 @@ function assertConfigured(config) {
 }
 
 export function loadSingleFixtureProvisioningConfig(env = process.env, {
-  randomUUID = () => crypto.randomUUID()
+  randomUUID = () => crypto.randomUUID(),
+  controllerRuntime = null
 } = {}) {
   if (env.CNYOS_SINGLE_FIXTURE_PROVISION_MODE !== LIVE_MODE) {
     fail('CNYOS_SINGLE_FIXTURE_LIVE_MODE_REQUIRED');
@@ -128,8 +133,11 @@ export function loadSingleFixtureProvisioningConfig(env = process.env, {
     fail('CNYOS_SINGLE_FIXTURE_ACK_REQUIRED');
   }
 
-  const runtime = assertControllerRuntime(env);
-  if (runtime.workflowPath !== POLICY.controller.releaseWorkflowPath) {
+  const runtime = controllerRuntime
+    ? assertVerifiedLocalControllerRuntime(controllerRuntime)
+    : assertControllerRuntime(env);
+  if (runtime.workflowPath !== POLICY.controller.releaseWorkflowPath &&
+    runtime.workflowPath !== LOCAL_CONTROLLER_ENTRYPOINT) {
     fail('CNYOS_SINGLE_FIXTURE_CONTROLLER_WORKFLOW_INVALID');
   }
 
@@ -1122,9 +1130,10 @@ export async function runSingleFixtureProvisioning(env = process.env, {
   fetchImpl = fetch,
   authorizationHook = null,
   now = () => new Date(),
-  randomUUID = () => crypto.randomUUID()
+  randomUUID = () => crypto.randomUUID(),
+  controllerRuntime = null
 } = {}) {
-  const config = loadSingleFixtureProvisioningConfig(env, { randomUUID });
+  const config = loadSingleFixtureProvisioningConfig(env, { randomUUID, controllerRuntime });
   await assertFreshOutputDestination(config);
   const planRecord = buildSingleFixtureProvisioningPlan(config);
   const admission = await authorizeSingleFixtureProvisioning(config, planRecord,

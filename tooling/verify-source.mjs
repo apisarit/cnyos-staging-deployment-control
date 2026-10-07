@@ -16,6 +16,24 @@ const adaptations = new Set([
   'ops/cnyos-staging-controller/test-support/uat-browser-local.mjs'
 ]);
 const candidateSources = new Set(['admin.html','admin.js','app-shell.js','appointments.html','appointments.js','chananya-runtime.js','check-in.html','check-in.js','clinical-v3.html','clinical-v3.js','foundation.html','foundation.js','index.html','outcomes.html','outcomes.js','pharmacy.html','pharmacy.js','platform-config.js','production.html','production.js','quality.html','quality.js','opd-workflow.js','scripts/staging-support.mjs','scripts/verify-authenticated-staging.mjs']);
+const executableFiles = new Set([
+  'ops/cnyos-staging-controller/scripts/run-local-bounded-treatment-uat.sh'
+]);
+if (manifest.kind !== 'cnyos-inert-offline-source-manifest' || manifest.revision !== 4) {
+  fail('SCHEMA');
+}
+const inertReleaseIdentity = {
+  eligible: false,
+  classification: 'OPS_ONLY_INERT_MANIFEST_NOT_RELEASE_IDENTITY',
+  commit: null,
+  tree: null,
+  deploymentId: null
+};
+try {
+  assert.deepEqual(manifest.releaseIdentity, inertReleaseIdentity);
+} catch {
+  fail('RELEASE_IDENTITY');
+}
 assert.equal(manifest.activationAuthorized, false);
 assert.equal(manifest.deploymentAuthorized, false);
 assert.equal(manifest.humanApproval, false);
@@ -26,7 +44,8 @@ for (const entry of manifest.files) {
   if (!canonical(entry.path) || !entry.path.startsWith('ops/')) fail('PATH');
   if (seen.has(entry.path)) fail('DUPLICATE');
   seen.add(entry.path);
-  if (!canonical(entry.sourcePath) || sourceSeen.has(entry.sourcePath) || entry.mode !== '100644' || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 ||
+  const expectedMode = executableFiles.has(entry.path) ? '100755' : '100644';
+  if (!canonical(entry.sourcePath) || sourceSeen.has(entry.sourcePath) || entry.mode !== expectedMode || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 ||
       !/^[a-f0-9]{64}$/.test(entry.inputSha256) || !/^[a-f0-9]{64}$/.test(entry.outputSha256)) fail('ENTRY');
   sourceSeen.add(entry.sourcePath);
   const relocated = entry.sourcePath !== entry.path;
@@ -44,6 +63,9 @@ for (const entry of manifest.files) {
     if (!Number.isSafeInteger(entry[key]) || entry[key] < 0) fail('ENTRY');
   }
   if (entry.outputBytes !== entry.bytes) fail('ENTRY');
+}
+for (const executablePath of executableFiles) {
+  if (!seen.has(executablePath)) fail('EXECUTABLE_MISSING');
 }
 async function walk(dir, relative = '') {
   const out = [];
@@ -63,10 +85,15 @@ if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) fail('ROOT');
 if (JSON.stringify((await walk(opsRoot)).sort()) !== JSON.stringify([...seen].sort())) fail('TREE');
 
 for (const entry of manifest.files) {
-  const bytes = await readFile(path.join(root, entry.path));
+  const filename = path.join(root, entry.path);
+  const stat = await lstat(filename);
+  const actualMode = stat.mode & 0o777;
+  const expectedMode = entry.mode === '100755' ? 0o755 : 0o644;
+  if (!stat.isFile() || stat.isSymbolicLink() || actualMode !== expectedMode) fail('MODE');
+  const bytes = await readFile(filename);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   if (bytes.length !== entry.outputBytes || sha256 !== entry.outputSha256) fail('HASH');
   if (!entry.adaptation) assert.equal(sha256, entry.inputSha256, entry.path);
 }
 
-console.log(`CNYOS inert offline source: ${manifest.fileCount} hashes verified; activation remains blocked`);
+console.log(`CNYOS ops-only inert offline source: ${manifest.fileCount} hashes and modes verified; not a release identity; activation remains blocked`);

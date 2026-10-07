@@ -8,7 +8,11 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 const FOUNDATION_SCRIPTS = Object.freeze([
   'scripts/bounded-treatment-uat.mjs',
+  'scripts/local-controller-runtime.mjs',
   'scripts/provision-bounded-treatment-fixture.mjs',
+  'scripts/run-local-bounded-treatment-uat.mjs',
+  'scripts/run-local-bounded-treatment-uat.sh',
+  'scripts/run-protected-bounded-treatment-uat.mjs',
   'scripts/materialize-function-recipe-input.mjs',
   'scripts/create-function-comparison-handoff.mjs',
   'scripts/controller-uat-access-observations.mjs',
@@ -146,6 +150,21 @@ export const ACTIVATION_PAIRS = Object.freeze([
 ]);
 
 const BASE_TESTS = Object.freeze([
+  Object.freeze({
+    id: 'local-bounded-treatment-workflow',
+    path: 'tests/local-bounded-treatment-workflow-contract.mjs',
+    marker: 'local bounded treatment workflow contract: ok'
+  }),
+  Object.freeze({
+    id: 'local-controller-runtime',
+    path: 'tests/local-controller-runtime-contract.mjs',
+    marker: 'local exact remote PR-head controller runtime contract: ok'
+  }),
+  Object.freeze({
+    id: 'protected-bounded-treatment-workflow',
+    path: 'tests/protected-bounded-treatment-workflow-contract.mjs',
+    marker: 'protected bounded treatment workflow contract: ok'
+  }),
   Object.freeze({
     id: 'bounded-treatment-fixture',
     path: 'tests/provision-bounded-treatment-fixture-contract.mjs',

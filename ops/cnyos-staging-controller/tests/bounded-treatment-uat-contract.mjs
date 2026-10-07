@@ -9,6 +9,8 @@ import {
   BOUNDED_TREATMENT_TARGET,
   BoundedTreatmentError,
   TreatmentWriteLedger,
+  assertBoundedTreatmentAuthorizationActive,
+  boundedTreatmentBrowserEnvironment,
   buildEvidence,
   canonicalFixtureSha256,
   classifyTreatmentFailure,
@@ -18,6 +20,7 @@ import {
   reconcileAmbiguousOperation,
   recheckCanonicalPublication,
   validateBoundedTreatmentPolicyTarget,
+  validateDeploymentBindingEvidence,
   validateProtectedFixtureLedger,
   validateTreatmentFixture,
   writeEvidenceExclusive
@@ -37,6 +40,18 @@ const publishableKey = `sb_publishable_${'A'.repeat(24)}`;
 const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.signature';
 const clientInfo = 'supabase-js/2.112.4; runtime=web';
 const nowValue = new Date('2026-10-07T12:05:00.000Z');
+
+const browserEnvironment = boundedTreatmentBrowserEnvironment({
+  PATH: '/usr/bin', HOME: '/tmp/synthetic-browser-home', LANG: 'C.UTF-8',
+  CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY: 'must-not-reach-browser',
+  CNYOS_STAGING_TEST_PASSWORD: 'must-not-reach-browser',
+  CNYOS_STAGING_NETLIFY_AUTH_TOKEN: 'must-not-reach-browser',
+  CNYOS_EXPECTED_SUPABASE_PUBLISHABLE_KEY: 'must-not-reach-browser'
+});
+assert.deepEqual(browserEnvironment, {
+  HOME: '/tmp/synthetic-browser-home', LANG: 'C.UTF-8', PATH: '/usr/bin'
+});
+assert.equal(Object.isFrozen(browserEnvironment), true);
 
 function fixtureValue() {
   return {
@@ -159,6 +174,53 @@ function runAuthorizationValue(fixture) {
   };
 }
 
+function deploymentBindingEvidenceValue() {
+  const sha = character => character.repeat(64);
+  return {
+    schemaVersion: 1,
+    evidenceType: 'unlocked_staging_deployment_observation',
+    environment: 'staging',
+    syntheticOnly: true,
+    authorization: false,
+    productionEligible: false,
+    productionAuthorization: false,
+    realPatientDataAuthorized: false,
+    databaseMutationPerformed: false,
+    authenticatedDatabaseBehaviorVerified: false,
+    observedAt: '2026-10-07T12:04:00.000Z',
+    siteOrigin: BOUNDED_TREATMENT_TARGET.origin,
+    netlifySiteId: BOUNDED_TREATMENT_TARGET.netlifySiteId,
+    netlifyDeployId: deployId,
+    exactDeployOrigin: `https://${deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`,
+    deploymentId: BOUNDED_TREATMENT_TARGET.deploymentId,
+    databaseProjectRef: BOUNDED_TREATMENT_TARGET.supabaseProjectRef,
+    clinicId: BOUNDED_TREATMENT_TARGET.clinicId,
+    clinicCode: BOUNDED_TREATMENT_TARGET.clinicCode,
+    sourceCommit,
+    sourceTree,
+    tenantConfigSha256: sha('1'),
+    deployManifestSha256: sha('2'),
+    runtimePublishManifestSha256: sha('3'),
+    artifactSha256: sha('4'),
+    artifactFileCount: 42,
+    deploymentClass: 'dedicated-staging',
+    previewLocked: false,
+    databaseLocked: false,
+    stagingDatabaseExplicitlyAcknowledged: true,
+    browserDatabaseConfigured: true,
+    authHealth: { reachable: true, service: 'GoTrue' },
+    schedules: [],
+    scheduledRouteDenials: [],
+    routes: [
+      { origin: 'canonical', path: '/login.html', status: 200 },
+      { origin: 'exact-deploy', path: '/login.html', status: 200 },
+      { origin: 'canonical', path: '/clinical-v3.html', status: 200 },
+      { origin: 'exact-deploy', path: '/clinical-v3.html', status: 200 }
+    ],
+    forbiddenPaths: [{ path: '/.git/HEAD', status: 404 }]
+  };
+}
+
 function assertCode(fn, code) {
   assert.throws(fn, error => error instanceof BoundedTreatmentError && error.code === code);
 }
@@ -229,7 +291,7 @@ function fetchHeaders(extra = {}) {
   };
 }
 
-function rawLedgerFor(fixture) {
+function rawLedgerFor(fixture, options = {}) {
   return new TreatmentWriteLedger({
     encounterId: fixture.encounter.id,
     patientId: fixture.patient.id,
@@ -237,12 +299,13 @@ function rawLedgerFor(fixture) {
     practitionerEmail,
     password,
     publishableKey,
-    appOrigin: `https://${deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`
+    appOrigin: `https://${deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`,
+    ...options
   });
 }
 
-function ledgerFor(fixture) {
-  const ledger = rawLedgerFor(fixture);
+function ledgerFor(fixture, options = {}) {
+  const ledger = rawLedgerFor(fixture, options);
   const settings = ledger.inspect({
     url: `${BOUNDED_TREATMENT_TARGET.supabaseOrigin}/auth/v1/settings`,
     method: 'GET', postData: null, resourceType: 'fetch',
@@ -394,6 +457,20 @@ const protectedLedger = validateProtectedFixtureLedger(protectedLedgerValue(fixt
 });
 assert.equal(protectedLedger.fixtureSha256, canonicalFixtureSha256(validated));
 assert.equal(protectedLedger.fixtureIds.operationIds.length, 2);
+const deploymentBinding = validateDeploymentBindingEvidence(deploymentBindingEvidenceValue(), {
+  sourceCommit, sourceTree, deployId, now: nowValue
+});
+assert.equal(deploymentBinding.sourceCommit, sourceCommit);
+assert.equal(deploymentBinding.sourceTree, sourceTree);
+assert.equal(deploymentBinding.deployId, deployId);
+assertCode(() => validateDeploymentBindingEvidence({
+  ...deploymentBindingEvidenceValue(), sourceCommit: 'e'.repeat(40)
+}, { sourceCommit, sourceTree, deployId, now: nowValue }),
+  'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_INVALID');
+assertCode(() => validateDeploymentBindingEvidence({
+  ...deploymentBindingEvidenceValue(), observedAt: '2026-10-06T12:04:59.999Z'
+}, { sourceCommit, sourceTree, deployId, now: nowValue }),
+  'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_EXPIRED');
 
 for (const mutate of [
   value => { value.extra = true; },
@@ -442,7 +519,17 @@ const ledgerPath = path.join(ledgerDirectory, 'protected-ledger.json');
 const ledgerBytes = Buffer.from(`${JSON.stringify(protectedLedgerValue(fixtureValue()))}\n`);
 await fs.writeFile(ledgerPath, ledgerBytes, { mode: 0o600 });
 const ledgerFileSha256 = crypto.createHash('sha256').update(ledgerBytes).digest('hex');
-const baseEnvironment = envFor(fixtureValue(), ledgerPath, ledgerFileSha256);
+const deploymentBindingPath = path.join(ledgerDirectory, 'deployment-binding.json');
+const deploymentBindingBytes = Buffer.from(
+  `${JSON.stringify(deploymentBindingEvidenceValue(), null, 2)}\n`);
+await fs.writeFile(deploymentBindingPath, deploymentBindingBytes, { mode: 0o600 });
+const deploymentBindingFileSha256 = crypto.createHash('sha256')
+  .update(deploymentBindingBytes).digest('hex');
+const baseEnvironment = {
+  ...envFor(fixtureValue(), ledgerPath, ledgerFileSha256),
+  CNYOS_DEPLOYMENT_BINDING_EVIDENCE_PATH: deploymentBindingPath,
+  CNYOS_EXPECTED_DEPLOYMENT_BINDING_EVIDENCE_SHA256: deploymentBindingFileSha256
+};
 const config = await loadBoundedTreatmentConfig(baseEnvironment, { now: () => nowValue });
 assert.equal(config.password, password);
 assert.equal(config.netlifyToken, netlifyToken);
@@ -456,12 +543,25 @@ assert.equal(config.runAuthorization.controller.commit, controllerCommit);
 assert.equal(config.runAuthorization.run.fixtureSha256, canonicalFixtureSha256(config.fixture));
 assert.equal(config.runAuthorization.inputSha256,
   baseEnvironment.CNYOS_EXPECTED_TREATMENT_UAT_RUN_AUTHORIZATION_SHA256);
+assert.equal(assertBoundedTreatmentAuthorizationActive(config,
+  new Date('2026-10-07T12:29:59.999Z')), true);
+assert.throws(() => assertBoundedTreatmentAuthorizationActive(config,
+  new Date('2026-10-07T12:30:00.000Z')), error =>
+  error instanceof BoundedTreatmentError &&
+    error.code === 'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_EXPIRED');
 assert.equal(config.fixture.practitioner.role, 'practitioner');
 assert.equal(config.protectedLedger.entryId, 'fixture:treatment:20261007');
 assert.equal(config.protectedLedger.sourceFileSha256, ledgerFileSha256);
 assert.equal(config.protectedLedger.expectedFileSha256, ledgerFileSha256);
+assert.equal(config.deploymentBindingEvidence.inputSha256, deploymentBindingFileSha256);
+assert.equal(config.deploymentBindingEvidence.sourceCommit, sourceCommit);
 assert.equal(config.immutableOrigin,
   `https://${deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`);
+await assertRejectCode(() => loadBoundedTreatmentConfig({
+  ...baseEnvironment,
+  CNYOS_EXPECTED_DEPLOYMENT_BINDING_EVIDENCE_SHA256: '0'.repeat(64)
+}, { now: () => nowValue }),
+  'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_DIGEST_MISMATCH');
 await assertRejectCode(() => loadBoundedTreatmentConfig({
   ...baseEnvironment, CNYOS_TREATMENT_UAT_ACK: 'yes'
 }, { now: () => nowValue }), 'CNYOS_BOUNDED_TREATMENT_ACK_REQUIRED');
@@ -782,7 +882,16 @@ assert.equal(ledger.inspect({
   url: writeUrl, method: 'POST', postData: '{}', resourceType: 'fetch', headers: rpcHeaders()
 }).allow, false);
 
-const routedWriteLedger = ledgerFor(fixture);
+let durableDispatchRecord = null;
+const routedWriteLedger = ledgerFor(fixture, {
+  onTreatmentWriteDispatch: async record => { durableDispatchRecord = record; },
+  assertTreatmentWriteAuthorized: record => {
+    assert.equal(durableDispatchRecord, record,
+      'authorization recheck must run after the durable dispatch hook');
+    assertBoundedTreatmentAuthorizationActive(config,
+      new Date('2026-10-07T12:29:59.999Z'));
+  }
+});
 routedWriteLedger.begin(fixture.sessions[0], 'write-1');
 const routedWriteHandler = await captureRequestHandler(routedWriteLedger);
 let writeFetchOptions = null;
@@ -796,6 +905,9 @@ await routedWriteHandler({
     postData: JSON.stringify(payloadFor(fixture, fixture.sessions[0]))
   }),
   fetch: async options => {
+    assert.equal(durableDispatchRecord?.ordinal, 1,
+      'durable dispatch hook must complete before the network write');
+    assert.equal(durableDispatchRecord?.operationId, fixture.sessions[0].operationId);
     writeFetchOptions = options;
     return { status: () => 200, body: async () => routedWriteBody };
   },
@@ -805,6 +917,92 @@ await routedWriteHandler({
 assert.equal(writeFulfilled, true);
 assert.equal(hasHeader(writeFetchOptions.headers, 'priority'), false);
 assert.equal(routedWriteLedger.writes.length, 1);
+
+const firstWriteExpiryEvents = [];
+const firstWriteExpiryLedger = ledgerFor(fixture, {
+  onTreatmentWriteDispatch: async record => {
+    firstWriteExpiryEvents.push(`journal-${record.ordinal}`);
+  },
+  assertTreatmentWriteAuthorized: record => {
+    firstWriteExpiryEvents.push(`authorize-${record.ordinal}`);
+    assertBoundedTreatmentAuthorizationActive(config,
+      new Date('2026-10-07T12:30:00.000Z'));
+  }
+});
+firstWriteExpiryLedger.begin(fixture.sessions[0], 'write-1');
+const firstWriteExpiryHandler = await captureRequestHandler(firstWriteExpiryLedger);
+let firstWriteExpiryFetches = 0;
+let firstWriteExpiryAbort = null;
+await firstWriteExpiryHandler({
+  request: () => browserRequest({
+    url: writeUrl, method: 'POST', resourceType: 'fetch', priority: 'u=1, i',
+    headers: rpcHeaders(),
+    postData: JSON.stringify(payloadFor(fixture, fixture.sessions[0]))
+  }),
+  fetch: async () => {
+    firstWriteExpiryFetches += 1;
+    assert.fail('expired first-write authorization must stop before route.fetch');
+  },
+  fulfill: async () => assert.fail('expired first write must not be fulfilled'),
+  abort: async reason => { firstWriteExpiryAbort = reason; }
+});
+assert.deepEqual(firstWriteExpiryEvents, ['journal-1', 'authorize-1']);
+assert.equal(firstWriteExpiryFetches, 0);
+assert.equal(firstWriteExpiryAbort, 'failed');
+assert.equal(firstWriteExpiryLedger.violation,
+  'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_EXPIRED');
+
+const secondWriteExpiryEvents = [];
+const secondWriteExpiryLedger = ledgerFor(fixture, {
+  onTreatmentWriteDispatch: async record => {
+    secondWriteExpiryEvents.push(`journal-${record.ordinal}`);
+  },
+  assertTreatmentWriteAuthorized: record => {
+    secondWriteExpiryEvents.push(`authorize-${record.ordinal}`);
+    assertBoundedTreatmentAuthorizationActive(config, new Date(record.ordinal === 1
+      ? '2026-10-07T12:29:59.999Z'
+      : '2026-10-07T12:30:00.000Z'));
+  }
+});
+const secondWriteExpiryHandler = await captureRequestHandler(secondWriteExpiryLedger);
+secondWriteExpiryLedger.begin(fixture.sessions[0], 'write-1');
+let secondWriteExpiryFetches = 0;
+await secondWriteExpiryHandler({
+  request: () => browserRequest({
+    url: writeUrl, method: 'POST', resourceType: 'fetch', priority: 'u=1, i',
+    headers: rpcHeaders(),
+    postData: JSON.stringify(payloadFor(fixture, fixture.sessions[0]))
+  }),
+  fetch: async () => {
+    secondWriteExpiryFetches += 1;
+    return { status: () => 200, body: async () => routedWriteBody };
+  },
+  fulfill: async () => {},
+  abort: async () => assert.fail('authorized first write must not abort')
+});
+secondWriteExpiryLedger.finish();
+secondWriteExpiryLedger.begin(fixture.sessions[1], 'write-2');
+let secondWriteExpiryAbort = null;
+await secondWriteExpiryHandler({
+  request: () => browserRequest({
+    url: writeUrl, method: 'POST', resourceType: 'fetch', priority: 'u=1, i',
+    headers: rpcHeaders(),
+    postData: JSON.stringify(payloadFor(fixture, fixture.sessions[1]))
+  }),
+  fetch: async () => {
+    secondWriteExpiryFetches += 1;
+    assert.fail('expired second-write authorization must stop before route.fetch');
+  },
+  fulfill: async () => assert.fail('expired second write must not be fulfilled'),
+  abort: async reason => { secondWriteExpiryAbort = reason; }
+});
+assert.deepEqual(secondWriteExpiryEvents,
+  ['journal-1', 'authorize-1', 'journal-2', 'authorize-2']);
+assert.equal(secondWriteExpiryFetches, 1,
+  'only the still-authorized first write may reach route.fetch');
+assert.equal(secondWriteExpiryAbort, 'failed');
+assert.equal(secondWriteExpiryLedger.violation,
+  'CNYOS_BOUNDED_TREATMENT_RUN_AUTHORIZATION_EXPIRED');
 
 const writeLedger = ledgerFor(fixture);
 writeLedger.begin(fixture.sessions[0], 'write-1');
@@ -947,9 +1145,61 @@ const deployment = await preflightExactDeployment(config, { fetchImpl: mockFetch
 assert.equal(deployment.deployId, deployId);
 assert.equal(deployment.sourceCommit, sourceCommit);
 assert.equal(deployment.sourceTree, sourceTree);
+assert.equal(deployment.sourceIdentity.kind, 'netlify_commit_ref');
+assert.equal(deployment.sourceIdentity.commit, sourceCommit);
 assert.equal(deployment.immutableOrigin, config.immutableOrigin);
 assert(fetchedUrls.includes(`${config.immutableOrigin}/deploy-manifest.json`));
 assert(!fetchedUrls.includes(`${BOUNDED_TREATMENT_TARGET.origin}/deploy-manifest.json`));
+
+function deployMetadataFetch(commitRef, fallback = mockFetch) {
+  return async (url, options) => {
+    if (String(url).endsWith(`/deploys/${deployId}`)) {
+      const value = {
+        id: deployId,
+        site_id: BOUNDED_TREATMENT_TARGET.netlifySiteId,
+        state: 'ready',
+        context: 'production',
+        deploy_ssl_url: config.immutableOrigin,
+        published_at: '2026-10-07T12:05:00.000Z'
+      };
+      if (commitRef !== undefined) value.commit_ref = commitRef;
+      return Response.json(value);
+    }
+    return fallback(url, options);
+  };
+}
+
+await assertRejectCode(() => preflightExactDeployment({
+  ...config,
+  deploymentBindingEvidence: null
+}, {
+  fetchImpl: deployMetadataFetch(undefined),
+  now: () => nowValue
+}), 'CNYOS_BOUNDED_TREATMENT_DEPLOY_COMMIT_MISMATCH');
+await assertRejectCode(() => preflightExactDeployment(config, {
+  fetchImpl: deployMetadataFetch('e'.repeat(40)),
+  now: () => nowValue
+}), 'CNYOS_BOUNDED_TREATMENT_DEPLOY_COMMIT_MISMATCH');
+const deploymentFromTrustedBinding = await preflightExactDeployment(config, {
+  fetchImpl: deployMetadataFetch(undefined),
+  now: () => nowValue
+});
+assert.equal(deploymentFromTrustedBinding.sourceIdentity.kind,
+  'trusted_source_derived_deploy_binding');
+assert.equal(deploymentFromTrustedBinding.sourceIdentity.commit, sourceCommit);
+assert.equal(deploymentFromTrustedBinding.sourceIdentity.tree, sourceTree);
+assert.equal(deploymentFromTrustedBinding.sourceIdentity.evidenceSha256,
+  deploymentBindingFileSha256);
+await assertRejectCode(() => preflightExactDeployment({
+  ...config,
+  deploymentBindingEvidence: {
+    ...config.deploymentBindingEvidence,
+    observedAt: '2026-10-06T12:04:59.999Z'
+  }
+}, {
+  fetchImpl: deployMetadataFetch(undefined),
+  now: () => nowValue
+}), 'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_EXPIRED');
 
 const canonicalPublication = await recheckCanonicalPublication(config, deployment,
   { fetchImpl: mockFetch });

@@ -352,7 +352,10 @@ assert.equal(packageManifest.scripts.test,
   'node tests/rollback-readiness-contract.mjs && ' +
   'node tests/external-broker-trust-boundaries-contract.mjs && ' +
   'node tests/bounded-treatment-uat-contract.mjs && ' +
-  'node tests/provision-bounded-treatment-fixture-contract.mjs');
+  'node tests/provision-bounded-treatment-fixture-contract.mjs && ' +
+  'node tests/protected-bounded-treatment-workflow-contract.mjs && ' +
+  'node tests/local-controller-runtime-contract.mjs && ' +
+  'node tests/local-bounded-treatment-workflow-contract.mjs');
 const defaultTestFiles = packageManifest.scripts.test.split(' && ').map(command => {
   assert.match(command, /^node tests\/[a-z0-9-]+-contract\.mjs$/,
     'default contracts must run explicitly without shell fallbacks');
@@ -371,6 +374,13 @@ assert.deepEqual([...defaultTestFiles].sort(), presentTestFiles,
   'npm test must cover every currently implemented offline contract');
 assert.equal(packageManifest.scripts['test:activation'],
   'node scripts/run-activation-contracts.mjs');
+assert.equal(packageManifest.scripts['uat:treatment:protected'],
+  'node scripts/run-protected-bounded-treatment-uat.mjs');
+assert.equal(packageManifest.scripts['test:treatment:local-controller'],
+  'node tests/local-controller-runtime-contract.mjs && ' +
+  'node tests/local-bounded-treatment-workflow-contract.mjs');
+assert.equal(packageManifest.scripts['uat:treatment:local'], undefined,
+  'local live UAT must start through the preload-sanitizing shell launcher, not npm');
 assert.doesNotMatch(packageManifest.scripts.test, /test:activation|run-activation-contracts/);
 assert.equal(lock.lockfileVersion, 3);
 assert.equal(lock.packages[''].dependencies['@netlify/blobs'], '10.7.13');
@@ -449,7 +459,11 @@ for (const { id, test } of protectedActivationPairs) {
 }
 const protectedFoundationScripts = [
   'bounded-treatment-uat.mjs',
+  'local-controller-runtime.mjs',
   'provision-bounded-treatment-fixture.mjs',
+  'run-local-bounded-treatment-uat.mjs',
+  'run-local-bounded-treatment-uat.sh',
+  'run-protected-bounded-treatment-uat.mjs',
   'materialize-function-recipe-input.mjs',
   'create-function-comparison-handoff.mjs',
   'controller-uat-access-observations.mjs',
@@ -474,7 +488,10 @@ assert.deepEqual(CLOSED_WORLD_SCRIPT_INVENTORY, [...new Set([
 ])].sort());
 assert.deepEqual(CLOSED_WORLD_TEST_INVENTORY, [
   'bounded-treatment-uat-contract.mjs',
+  'local-bounded-treatment-workflow-contract.mjs',
+  'local-controller-runtime-contract.mjs',
   'provision-bounded-treatment-fixture-contract.mjs',
+  'protected-bounded-treatment-workflow-contract.mjs',
   'function-recipe-input-contract.mjs',
   'function-comparison-handoff-contract.mjs',
   'controller-uat-access-observations-contract.mjs',
