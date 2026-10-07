@@ -16,6 +16,7 @@ import {
   executeBoundedTreatmentUat,
   loadBoundedTreatmentConfig,
   preflightExactDeployment,
+  readDeploymentBindingEvidence,
   validateBoundedTreatmentRunAuthorization,
   writeEvidenceExclusive
 } from './bounded-treatment-uat.mjs';
@@ -680,6 +681,11 @@ export async function runLocalBoundedTreatmentWorkflow(env = process.env) {
     'CNYOS_LOCAL_UAT_SOURCE_TREE_INVALID', 40);
   const deployId = exactLowercase(env.CNYOS_EXPECTED_NETLIFY_DEPLOY_ID, NETLIFY_DEPLOY_ID,
     'CNYOS_LOCAL_UAT_DEPLOY_ID_INVALID', 24);
+  const deploymentBindingEvidence = await readDeploymentBindingEvidence(env, {
+    sourceCommit,
+    sourceTree,
+    deployId
+  }, now());
   const practitionerEmail = required(env.CNYOS_STAGING_PRACTITIONER_EMAIL,
     'CNYOS_LOCAL_UAT_PRACTITIONER_EMAIL_REQUIRED', 320).toLowerCase();
   if (!/^synthetic[A-Za-z0-9._+-]*@[A-Za-z0-9.-]+\.invalid$/.test(practitionerEmail)) {
@@ -693,9 +699,10 @@ export async function runLocalBoundedTreatmentWorkflow(env = process.env) {
     sourceTree,
     deployId,
     netlifyToken,
+    deploymentBindingEvidence,
     immutableOrigin:
       `https://${deployId}--${BOUNDED_TREATMENT_TARGET.netlifySiteName}.netlify.app`
-  }), { fetchImpl });
+  }), { fetchImpl, now });
   const runtime = await assertLocalExactRemotePrHeadControllerRuntime(env);
   const observedAt = now();
   if (!(observedAt instanceof Date) || Number.isNaN(observedAt.getTime())) {

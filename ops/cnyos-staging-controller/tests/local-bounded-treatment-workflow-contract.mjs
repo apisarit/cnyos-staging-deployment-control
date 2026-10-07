@@ -137,6 +137,9 @@ for (const fragment of [
   'exactLowercase(env.CNYOS_EXPECTED_SOURCE_COMMIT, SHA40',
   'exactLowercase(env.CNYOS_EXPECTED_SOURCE_TREE, SHA40',
   'exactLowercase(env.CNYOS_EXPECTED_NETLIFY_DEPLOY_ID, NETLIFY_DEPLOY_ID',
+  'const deploymentBindingEvidence = await readDeploymentBindingEvidence(env, {',
+  'deploymentBindingEvidence,',
+  '}), { fetchImpl, now });',
   "['ci', '--ignore-scripts', '--no-audit', '--no-fund']",
   'controllerRuntime: runtime',
   'authorizationHook: createLocalAdmissionHook(config, records)',
@@ -164,6 +167,9 @@ assert.ok(source.indexOf('await installFreshLockedChromium(workDirectory)') <
 assert.ok(source.indexOf('const deploymentPreflight = await preflightExactDeployment(') <
   source.indexOf('const authorizedAt = observedAt.toISOString();'),
   'authorization lifetime must begin after exact deployment preflight');
+assert.ok(source.indexOf('const deploymentBindingEvidence = await readDeploymentBindingEvidence(') <
+  source.indexOf('const deploymentPreflight = await preflightExactDeployment('),
+  'trusted manual-deploy binding must be validated before exact deployment preflight');
 
 assert.ok(!source.includes(POLICY.productionDenylist.netlifyOrigin));
 assert.ok(!source.includes(POLICY.productionDenylist.netlifySiteId));

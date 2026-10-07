@@ -500,7 +500,7 @@ export function validateDeploymentBindingEvidence(value, {
   });
 }
 
-async function readDeploymentBindingEvidence(env, identity, observedNow) {
+export async function readDeploymentBindingEvidence(env, identity, observedNow) {
   const rawPath = String(env.CNYOS_DEPLOYMENT_BINDING_EVIDENCE_PATH || '').trim();
   const rawDigest = String(env.CNYOS_EXPECTED_DEPLOYMENT_BINDING_EVIDENCE_SHA256 || '').trim();
   if (!rawPath && !rawDigest) return null;

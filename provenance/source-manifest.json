@@ -68,12 +68,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
       "path": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
-      "bytes": 93434,
-      "inputSha256": "4bf5ea3ce3b64200a5cc2002598e28c36c70aa0f4886e50c48018f76bdf0b425",
-      "outputSha256": "4bf5ea3ce3b64200a5cc2002598e28c36c70aa0f4886e50c48018f76bdf0b425",
+      "bytes": 93441,
+      "inputSha256": "cdfa968b70253369f7decf894d582d1b91a1ed1dd2a45a329ee43e438ca9ee51",
+      "outputSha256": "cdfa968b70253369f7decf894d582d1b91a1ed1dd2a45a329ee43e438ca9ee51",
       "mode": "100644",
-      "inputBytes": 93434,
-      "outputBytes": 93434
+      "inputBytes": 93441,
+      "outputBytes": 93441
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs",
@@ -328,12 +328,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/run-local-bounded-treatment-uat.mjs",
       "path": "ops/cnyos-staging-controller/scripts/run-local-bounded-treatment-uat.mjs",
-      "bytes": 35361,
-      "inputSha256": "962642eabb555c91cd9ad42ab44f71d14cba09d04a7f7595e774e8ac455a6e89",
-      "outputSha256": "962642eabb555c91cd9ad42ab44f71d14cba09d04a7f7595e774e8ac455a6e89",
+      "bytes": 35569,
+      "inputSha256": "e88681c7d262f1ba492c96a0250e381b2448249e30aca70f4bcedbeeaf4ce5f4",
+      "outputSha256": "e88681c7d262f1ba492c96a0250e381b2448249e30aca70f4bcedbeeaf4ce5f4",
       "mode": "100644",
-      "inputBytes": 35361,
-      "outputBytes": 35361
+      "inputBytes": 35569,
+      "outputBytes": 35569
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/run-local-bounded-treatment-uat.sh",
@@ -939,12 +939,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/local-bounded-treatment-workflow-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/local-bounded-treatment-workflow-contract.mjs",
-      "bytes": 8460,
-      "inputSha256": "773860f6e86c3cdbe756787fb37e1d26533d56b52f22f70f369331c2a19424fe",
-      "outputSha256": "773860f6e86c3cdbe756787fb37e1d26533d56b52f22f70f369331c2a19424fe",
+      "bytes": 8874,
+      "inputSha256": "8449e8e60c8d57ed812d4d3c66430668e0b4119a45952df1a4033a1b29d57236",
+      "outputSha256": "8449e8e60c8d57ed812d4d3c66430668e0b4119a45952df1a4033a1b29d57236",
       "mode": "100644",
-      "inputBytes": 8460,
-      "outputBytes": 8460
+      "inputBytes": 8874,
+      "outputBytes": 8874
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/local-controller-runtime-contract.mjs",
