@@ -426,7 +426,8 @@ export function validateDeploymentBindingEvidence(value, {
     'siteOrigin', 'netlifySiteId', 'netlifyDeployId', 'exactDeployOrigin',
     'deploymentId', 'databaseProjectRef', 'clinicId', 'clinicCode', 'sourceCommit',
     'sourceTree', 'tenantConfigSha256', 'deployManifestSha256',
-    'runtimePublishManifestSha256', 'artifactSha256', 'artifactFileCount',
+    'runtimePublishManifestSha256', 'generatedNetlifyTomlSha256', 'artifactSha256',
+    'artifactFileCount',
     'deploymentClass', 'previewLocked', 'databaseLocked',
     'stagingDatabaseExplicitlyAcknowledged', 'browserDatabaseConfigured', 'authHealth',
     'schedules', 'scheduledRouteDenials', 'routes', 'forbiddenPaths'
@@ -453,7 +454,8 @@ export function validateDeploymentBindingEvidence(value, {
     String(value.sourceCommit || '').toLowerCase() !== sourceCommit ||
     String(value.sourceTree || '').toLowerCase() !== sourceTree ||
     !['tenantConfigSha256', 'deployManifestSha256', 'runtimePublishManifestSha256',
-      'artifactSha256'].every(name => SHA256.test(String(value[name] || '').toLowerCase())) ||
+      'generatedNetlifyTomlSha256', 'artifactSha256']
+      .every(name => SHA256.test(String(value[name] || '').toLowerCase())) ||
     !Number.isSafeInteger(value.artifactFileCount) || value.artifactFileCount < 1 ||
     value.artifactFileCount > 10_000 || value.deploymentClass !== 'dedicated-staging' ||
     value.previewLocked !== false || value.databaseLocked !== false ||
@@ -496,7 +498,8 @@ export function validateDeploymentBindingEvidence(value, {
     artifactSha256: String(value.artifactSha256).toLowerCase(),
     artifactFileCount: value.artifactFileCount,
     deployManifestSha256: String(value.deployManifestSha256).toLowerCase(),
-    runtimePublishManifestSha256: String(value.runtimePublishManifestSha256).toLowerCase()
+    runtimePublishManifestSha256: String(value.runtimePublishManifestSha256).toLowerCase(),
+    generatedNetlifyTomlSha256: String(value.generatedNetlifyTomlSha256).toLowerCase()
   });
 }
 
@@ -831,7 +834,9 @@ export async function preflightExactDeployment(config, {
       tree: config.deploymentBindingEvidence.sourceTree,
       evidenceSha256: config.deploymentBindingEvidence.inputSha256,
       artifactSha256: config.deploymentBindingEvidence.artifactSha256,
-      artifactFileCount: config.deploymentBindingEvidence.artifactFileCount
+      artifactFileCount: config.deploymentBindingEvidence.artifactFileCount,
+      generatedNetlifyTomlSha256:
+        config.deploymentBindingEvidence.generatedNetlifyTomlSha256
     });
   } else {
     fail('CNYOS_BOUNDED_TREATMENT_DEPLOY_COMMIT_MISMATCH');

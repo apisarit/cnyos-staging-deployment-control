@@ -68,12 +68,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
       "path": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
-      "bytes": 93441,
-      "inputSha256": "cdfa968b70253369f7decf894d582d1b91a1ed1dd2a45a329ee43e438ca9ee51",
-      "outputSha256": "cdfa968b70253369f7decf894d582d1b91a1ed1dd2a45a329ee43e438ca9ee51",
+      "bytes": 93703,
+      "inputSha256": "884d7f768d6f72cf3b1a6b5ac9f0e04c9fd0d543dba831afd0d5aae878741c40",
+      "outputSha256": "884d7f768d6f72cf3b1a6b5ac9f0e04c9fd0d543dba831afd0d5aae878741c40",
       "mode": "100644",
-      "inputBytes": 93441,
-      "outputBytes": 93441
+      "inputBytes": 93703,
+      "outputBytes": 93703
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/cleanup-netlify-draft.mjs",
@@ -769,12 +769,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/bounded-treatment-uat-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/bounded-treatment-uat-contract.mjs",
-      "bytes": 56186,
-      "inputSha256": "472519de583a8e13e70f8e4a2f20748d18e97ebba310aa9507ad7c02651616a4",
-      "outputSha256": "472519de583a8e13e70f8e4a2f20748d18e97ebba310aa9507ad7c02651616a4",
+      "bytes": 56993,
+      "inputSha256": "f76690fcde2d9bb5b9d9069e3ab5d30fbd725e2ce6bf313b2445e38a1a88be88",
+      "outputSha256": "f76690fcde2d9bb5b9d9069e3ab5d30fbd725e2ce6bf313b2445e38a1a88be88",
       "mode": "100644",
-      "inputBytes": 56186,
-      "outputBytes": 56186
+      "inputBytes": 56993,
+      "outputBytes": 56993
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-authenticated-uat-contract.mjs",

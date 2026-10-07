@@ -201,7 +201,8 @@ function deploymentBindingEvidenceValue() {
     tenantConfigSha256: sha('1'),
     deployManifestSha256: sha('2'),
     runtimePublishManifestSha256: sha('3'),
-    artifactSha256: sha('4'),
+    generatedNetlifyTomlSha256: sha('4'),
+    artifactSha256: sha('5'),
     artifactFileCount: 42,
     deploymentClass: 'dedicated-staging',
     previewLocked: false,
@@ -463,6 +464,7 @@ const deploymentBinding = validateDeploymentBindingEvidence(deploymentBindingEvi
 assert.equal(deploymentBinding.sourceCommit, sourceCommit);
 assert.equal(deploymentBinding.sourceTree, sourceTree);
 assert.equal(deploymentBinding.deployId, deployId);
+assert.equal(deploymentBinding.generatedNetlifyTomlSha256, '4'.repeat(64));
 assertCode(() => validateDeploymentBindingEvidence({
   ...deploymentBindingEvidenceValue(), sourceCommit: 'e'.repeat(40)
 }, { sourceCommit, sourceTree, deployId, now: nowValue }),
@@ -471,6 +473,15 @@ assertCode(() => validateDeploymentBindingEvidence({
   ...deploymentBindingEvidenceValue(), observedAt: '2026-10-06T12:04:59.999Z'
 }, { sourceCommit, sourceTree, deployId, now: nowValue }),
   'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_EXPIRED');
+const bindingWithoutGeneratedConfig = deploymentBindingEvidenceValue();
+delete bindingWithoutGeneratedConfig.generatedNetlifyTomlSha256;
+assertCode(() => validateDeploymentBindingEvidence(bindingWithoutGeneratedConfig,
+  { sourceCommit, sourceTree, deployId, now: nowValue }),
+  'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_INVALID');
+assertCode(() => validateDeploymentBindingEvidence({
+  ...deploymentBindingEvidenceValue(), generatedNetlifyTomlSha256: 'not-a-sha256'
+}, { sourceCommit, sourceTree, deployId, now: nowValue }),
+  'CNYOS_BOUNDED_TREATMENT_DEPLOYMENT_BINDING_INVALID');
 
 for (const mutate of [
   value => { value.extra = true; },
@@ -1190,6 +1201,8 @@ assert.equal(deploymentFromTrustedBinding.sourceIdentity.commit, sourceCommit);
 assert.equal(deploymentFromTrustedBinding.sourceIdentity.tree, sourceTree);
 assert.equal(deploymentFromTrustedBinding.sourceIdentity.evidenceSha256,
   deploymentBindingFileSha256);
+assert.equal(deploymentFromTrustedBinding.sourceIdentity.generatedNetlifyTomlSha256,
+  '4'.repeat(64));
 await assertRejectCode(() => preflightExactDeployment({
   ...config,
   deploymentBindingEvidence: {
