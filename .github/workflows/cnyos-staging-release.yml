@@ -65,12 +65,18 @@ jobs:
       CNYOS_CONTROLLER_PROTECTED_REF: refs/heads/main
       CNYOS_CONTROLLER_WORKFLOW_PATH: .github/workflows/cnyos-staging-release.yml
       CNYOS_CONTROLLER_ENVIRONMENT: cnyos-staging-publish
-      CNYOS_PROTECTED_UAT_WORK_DIRECTORY: ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}
       CNYOS_EXPECTED_SOURCE_COMMIT: ${{ inputs.app_commit }}
       CNYOS_EXPECTED_SOURCE_TREE: ${{ inputs.app_tree }}
       CNYOS_EXPECTED_NETLIFY_DEPLOY_ID: ${{ inputs.netlify_deploy_id }}
       CNYOS_STAGING_PRACTITIONER_EMAIL: ${{ inputs.practitioner_email }}
     steps:
+      - name: Initialize protected work directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf 'CNYOS_PROTECTED_UAT_WORK_DIRECTORY=%s/cnyos-protected-bounded-treatment-%s\n' \
+            "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}" >> "${GITHUB_ENV:?}"
+
       - name: Checkout exact protected controller commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:

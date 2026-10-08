@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -176,6 +177,51 @@ assert.deepEqual(PROTECTED_FIXTURE_SECRET_NAMES, [
 ]);
 assert.match(workflow, /^on:\n  workflow_dispatch:\n/m);
 assert.doesNotMatch(workflow, /^\s+(?:pull_request|push|workflow_run|schedule):/m);
+const boundedJobEnvironment = workflow.match(/\n  bounded-treatment:\n[\s\S]*?\n    env:\n([\s\S]*?)\n    steps:\n/);
+assert.ok(boundedJobEnvironment, 'bounded treatment job environment must be present');
+assert.doesNotMatch(boundedJobEnvironment[1], /\$\{\{\s*runner\./,
+  'GitHub cannot resolve the runner context in a job-level environment');
+const initializeWorkDirectory = workflow.match(
+  /\n    steps:\n      - name: Initialize protected work directory\n        shell: bash\n        run: \|\n((?:          .*\n)+)/);
+assert.ok(initializeWorkDirectory,
+  'initialize the shared directory before any bounded treatment job step can fail');
+const initializeScript = initializeWorkDirectory[1].replace(/^          /gm, '');
+assert.doesNotMatch(initializeScript, /\$\{\{/,
+  'directory initialization must use runner-provided shell variables');
+const runnerTemp = path.join(testRoot, 'runner temp');
+await fs.mkdir(runnerTemp);
+for (const runId of ['91000018', '91000019']) {
+  const environmentFile = path.join(testRoot, `github-env-${runId}`);
+  const initialized = spawnSync('/bin/bash', ['--noprofile', '--norc', '-c', initializeScript], {
+    encoding: 'utf8',
+    env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: runnerTemp,
+      GITHUB_RUN_ID: runId, GITHUB_ENV: environmentFile }
+  });
+  assert.equal(initialized.status, 0, initialized.stderr);
+  assert.equal(initialized.stdout, '', 'initialization must not print runtime environment values');
+  const workDirectory = `${runnerTemp}/cnyos-protected-bounded-treatment-${runId}`;
+  assert.equal(await fs.readFile(environmentFile, 'utf8'),
+    `CNYOS_PROTECTED_UAT_WORK_DIRECTORY=${workDirectory}\n`);
+  await assert.rejects(fs.stat(workDirectory), { code: 'ENOENT' },
+    'the runner must remain responsible for creating its private work directory');
+  const uploadPaths = [...workflow.matchAll(/^            (\$\{\{ runner\.temp \}\}\/.*)$/gm)]
+    .map(match => match[1].replace('${{ runner.temp }}', runnerTemp)
+      .replace('${{ github.run_id }}', runId));
+  assert.equal(uploadPaths.length, 6);
+  assert.ok(uploadPaths.every(filename => path.dirname(filename) === `${workDirectory}/upload`),
+    'every explicit evidence upload must use the initialized work directory');
+}
+for (const missing of ['RUNNER_TEMP', 'GITHUB_RUN_ID', 'GITHUB_ENV']) {
+  const environmentFile = path.join(testRoot, `missing-${missing}`);
+  const env = { PATH: '/usr/bin:/bin', RUNNER_TEMP: runnerTemp,
+    GITHUB_RUN_ID: '91000018', GITHUB_ENV: environmentFile };
+  delete env[missing];
+  const initialized = spawnSync('/bin/bash', ['--noprofile', '--norc', '-c', initializeScript], {
+    encoding: 'utf8', env
+  });
+  assert.notEqual(initialized.status, 0, `${missing} must not default to an unsafe directory`);
+  await assert.rejects(fs.stat(environmentFile), { code: 'ENOENT' });
+}
 for (const input of ['app_commit', 'app_tree', 'netlify_deploy_id', 'run_id',
   'practitioner_email']) {
   assert.match(workflow, new RegExp(`^      ${input}:$`, 'm'));

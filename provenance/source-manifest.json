@@ -999,12 +999,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/protected-bounded-treatment-workflow-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/protected-bounded-treatment-workflow-contract.mjs",
-      "bytes": 47061,
-      "inputSha256": "93e26b494e59926d144e50c328356014d52b57a84566532b1e010475b5ce3cf6",
-      "outputSha256": "93e26b494e59926d144e50c328356014d52b57a84566532b1e010475b5ce3cf6",
+      "bytes": 49931,
+      "inputSha256": "ef7999b25c56c235bdc46ab4191e65b8b59f8ad91f55d454fdd8a3e4e2aab4d6",
+      "outputSha256": "ef7999b25c56c235bdc46ab4191e65b8b59f8ad91f55d454fdd8a3e4e2aab4d6",
       "mode": "100644",
-      "inputBytes": 47061,
-      "outputBytes": 47061
+      "inputBytes": 49931,
+      "outputBytes": 49931
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/provision-bounded-treatment-fixture-contract.mjs",
