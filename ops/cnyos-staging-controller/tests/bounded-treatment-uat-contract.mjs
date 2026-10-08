@@ -292,6 +292,15 @@ function fetchHeaders(extra = {}) {
   };
 }
 
+function routeVisibleFetchHeaders(extra = {}) {
+  const headers = fetchHeaders();
+  delete headers.referer;
+  delete headers['sec-fetch-dest'];
+  delete headers['sec-fetch-mode'];
+  delete headers['sec-fetch-site'];
+  return { ...headers, ...extra };
+}
+
 function rawLedgerFor(fixture, options = {}) {
   return new TreatmentWriteLedger({
     encounterId: fixture.encounter.id,
@@ -821,6 +830,29 @@ assert.match(String(initScript), /WebSocket disabled for bounded UAT/);
 assert.equal(typeof requestHandler, 'function');
 assert.equal(typeof webSocketHandler, 'function');
 const productsUrl = `${BOUNDED_TREATMENT_TARGET.supabaseOrigin}/rest/v1/products?select=*&active=eq.true&order=name_th.asc`;
+
+const routeVisibleHeaderLedger = rawLedgerFor(fixture);
+assert.equal(routeVisibleHeaderLedger.inspect({
+  url: `${BOUNDED_TREATMENT_TARGET.supabaseOrigin}/auth/v1/settings`,
+  method: 'GET', postData: null, resourceType: 'fetch',
+  headers: routeVisibleFetchHeaders({ apikey: publishableKey })
+}).allow, true);
+assert.equal(routeVisibleHeaderLedger.inspect({
+  url: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4',
+  method: 'GET', postData: null, resourceType: 'script',
+  headers: routeVisibleFetchHeaders()
+}).allow, true);
+assert.equal(routeVisibleHeaderLedger.violation, null);
+
+const visibleHeaderMismatchLedger = rawLedgerFor(fixture);
+assert.equal(visibleHeaderMismatchLedger.inspect({
+  url: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4',
+  method: 'GET', postData: null, resourceType: 'script',
+  headers: routeVisibleFetchHeaders({ 'sec-fetch-mode': 'navigate' })
+}).allow, false);
+assert.equal(visibleHeaderMismatchLedger.violation,
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_HEADERS_INVALID');
+
 let continuedRequest = null;
 let continuedAbort = null;
 await requestHandler({
@@ -1066,6 +1098,20 @@ assert.equal(afterDispatch.status, 'UNCERTAIN');
 assert.equal(afterDispatch.session.operationId, fixture.sessions[0].operationId);
 assert.equal(afterDispatch.ordinal, 1);
 assert.equal(afterDispatch.failureCode, 'CNYOS_BOUNDED_TREATMENT_EXCEPTION_AFTER_DISPATCH');
+const preWriteGuardLedger = ledgerFor(fixture);
+preWriteGuardLedger.block('CNYOS_BOUNDED_TREATMENT_BROWSER_HEADERS_INVALID');
+const beforeDispatch = classifyTreatmentFailure(new Error('page timeout'), {
+  readbacks: []
+}, preWriteGuardLedger, fixture);
+assert.equal(beforeDispatch.status, 'FAIL');
+assert.equal(beforeDispatch.session, null);
+assert.equal(beforeDispatch.failureCode, 'CNYOS_BOUNDED_TREATMENT_BROWSER_HEADERS_INVALID');
+const unsafeGuardCodeLedger = ledgerFor(fixture);
+unsafeGuardCodeLedger.violation = 'UNSAFE VALUE';
+const unsafeGuardCode = classifyTreatmentFailure(new Error('page timeout'), {
+  readbacks: []
+}, unsafeGuardCodeLedger, fixture);
+assert.equal(unsafeGuardCode.failureCode, 'CNYOS_BOUNDED_TREATMENT_UAT_FAILED');
 const afterExactFreshReadback = classifyTreatmentFailure(new Error('canonical recheck failed'), {
   readbacks: [{ operationId: fixture.sessions[0].operationId }]
 }, dispatchedLedger, fixture);

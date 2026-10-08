@@ -91,6 +91,37 @@ const API_SEMANTIC_HEADERS = new Set([
 const PREFLIGHT_HEADERS = new Set([
   'access-control-request-headers', 'access-control-request-method'
 ]);
+const SAFE_LEDGER_FAILURE_CODES = new Set([
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_HEADERS_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_MUTATION_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_ORIGIN_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_READ_PATH_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_READ_QUERY_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_READ_RPC_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_RESOURCE_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_RESOURCE_TYPE_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_RPC_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_BROWSER_URL_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_ENCOUNTER_READ_SCOPE_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_LOGIN_BODY_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_LOGIN_RESPONSE_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_PATIENT_READ_SCOPE_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_PREFLIGHT_BODY_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_PRIORITY_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_PROFILE_READ_SCOPE_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_SUPABASE_KEY_CHANGED',
+  'CNYOS_BOUNDED_TREATMENT_SUPABASE_KEY_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_UNPLANNED_WRITE_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_WEBSOCKET_BLOCKED',
+  'CNYOS_BOUNDED_TREATMENT_WRITE_PAYLOAD_INVALID',
+  'CNYOS_BOUNDED_TREATMENT_WRITE_PAYLOAD_MISMATCH',
+  'CNYOS_BOUNDED_TREATMENT_WRITE_RESPONSE_INVALID'
+]);
+
+function hasVisibleBrowserHeaderMismatch(headers, expected) {
+  return Object.entries(expected).some(([name, value]) =>
+    Object.hasOwn(headers, name) && headers[name] !== value);
+}
 
 export class BoundedTreatmentError extends Error {
   constructor(code, { uncertain = false } = {}) {
@@ -1016,9 +1047,11 @@ export class TreatmentWriteLedger {
     }
     if (api) {
       if (normalized.origin !== this.scope.appOrigin || normalized.accept !== '*/*' ||
-        normalized['sec-fetch-dest'] !== 'empty' ||
-        normalized['sec-fetch-mode'] !== 'cors' ||
-        normalized['sec-fetch-site'] !== 'cross-site') {
+        hasVisibleBrowserHeaderMismatch(normalized, {
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'cross-site'
+        })) {
         this.block('CNYOS_BOUNDED_TREATMENT_BROWSER_HEADERS_INVALID');
         return null;
       }
@@ -1115,8 +1148,11 @@ export class TreatmentWriteLedger {
         !parsed.search && !parsed.hash) {
         const checked = this.checkedHeaders(parsed, resourceType, headers, 'script', []);
         if (!checked || checked.origin !== this.scope.appOrigin || checked.accept !== '*/*' ||
-          checked['sec-fetch-dest'] !== 'script' || checked['sec-fetch-mode'] !== 'cors' ||
-          checked['sec-fetch-site'] !== 'cross-site' ||
+          hasVisibleBrowserHeaderMismatch(checked, {
+            'sec-fetch-dest': 'script',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'cross-site'
+          }) ||
           (checked.referer && checked.referer !== `${this.scope.appOrigin}/`)) {
           this.block('CNYOS_BOUNDED_TREATMENT_BROWSER_HEADERS_INVALID');
           return Object.freeze({ allow: false, code: this.violation });
@@ -1808,13 +1844,16 @@ export function classifyTreatmentFailure(error, state, ledger, fixture) {
     }
   }
   const uncertain = error?.uncertain === true || Boolean(session);
+  const ledgerViolation = SAFE_LEDGER_FAILURE_CODES.has(ledger?.violation)
+    ? ledger.violation
+    : null;
   return Object.freeze({
     status: uncertain ? 'UNCERTAIN' : 'FAIL',
     failureCode: uncertain && error?.uncertain !== true
       ? 'CNYOS_BOUNDED_TREATMENT_EXCEPTION_AFTER_DISPATCH'
       : error instanceof BoundedTreatmentError
         ? error.code
-        : 'CNYOS_BOUNDED_TREATMENT_UAT_FAILED',
+        : ledgerViolation || 'CNYOS_BOUNDED_TREATMENT_UAT_FAILED',
     session,
     ordinal
   });
