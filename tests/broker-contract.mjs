@@ -41,7 +41,8 @@ for (const [name, changes] of [['audience', { aud: 'wrong' }], ['issuer', { iss:
 }
 {
   const body = baseBody('f'.repeat(40));
-  const token = tokenFor(body).split('.'); token[2] = `${token[2].slice(0, -2)}xx`;
+  const token = tokenFor(body).split('.');
+  token[2] = `${token[2][0] === 'A' ? 'B' : 'A'}${token[2].slice(1)}`;
   await assert.rejects(() => verifyOidcToken(token.join('.'), body, { jwks: { keys: [jwk] }, now }), /OIDC_SIGNATURE_INVALID/);
 }
 
