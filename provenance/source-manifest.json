@@ -13,7 +13,7 @@
     "deploymentId": null
   },
   "activationAuthorized": false,
-  "fileCount": 110,
+  "fileCount": 118,
   "files": [
     {
       "sourcePath": "ops/cnyos-staging-controller/README.md",
@@ -58,12 +58,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/package.json",
       "path": "ops/cnyos-staging-controller/package.json",
-      "bytes": 2815,
-      "inputSha256": "b7d1ad5ad15e291931451ac59934d50c6c7ae54da306534338c0976bb03c784b",
-      "outputSha256": "b7d1ad5ad15e291931451ac59934d50c6c7ae54da306534338c0976bb03c784b",
+      "bytes": 3015,
+      "inputSha256": "e01b833ed225ee0d4ec57915291b881d8bcf35e6df051d59092210f0a84ccfca",
+      "outputSha256": "e01b833ed225ee0d4ec57915291b881d8bcf35e6df051d59092210f0a84ccfca",
       "mode": "100644",
-      "inputBytes": 2815,
-      "outputBytes": 2815
+      "inputBytes": 3015,
+      "outputBytes": 3015
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/bounded-treatment-uat.mjs",
@@ -318,12 +318,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
       "path": "ops/cnyos-staging-controller/scripts/run-activation-contracts.mjs",
-      "bytes": 12698,
-      "inputSha256": "71af489b904b594f6c94f141cf8f10227cdf8d57a5f159f733094eddbbf1683e",
-      "outputSha256": "71af489b904b594f6c94f141cf8f10227cdf8d57a5f159f733094eddbbf1683e",
+      "bytes": 13047,
+      "inputSha256": "dc6263c06e5ca7a0de46df0daac339100ea44a3d3fa9039569ca5b34ccd5cbaf",
+      "outputSha256": "dc6263c06e5ca7a0de46df0daac339100ea44a3d3fa9039569ca5b34ccd5cbaf",
       "mode": "100644",
-      "inputBytes": 12698,
-      "outputBytes": 12698
+      "inputBytes": 13047,
+      "outputBytes": 13047
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/run-local-bounded-treatment-uat.mjs",
@@ -789,12 +789,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/controller-contract.mjs",
-      "bytes": 231786,
-      "inputSha256": "837b2ff0bbe372f8e1e0a2b856b7327cafc343ce17f3cce6fea9a65faea7c962",
-      "outputSha256": "837b2ff0bbe372f8e1e0a2b856b7327cafc343ce17f3cce6fea9a65faea7c962",
+      "bytes": 232034,
+      "inputSha256": "616286b9f61a2b1a7a1fcad494bf5d6d400b813d5c77be37883031ee3d839fb0",
+      "outputSha256": "616286b9f61a2b1a7a1fcad494bf5d6d400b813d5c77be37883031ee3d839fb0",
       "mode": "100644",
-      "inputBytes": 231786,
-      "outputBytes": 231786
+      "inputBytes": 232034,
+      "outputBytes": 232034
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/controller-function-bundle-contract.mjs",
@@ -1115,6 +1115,86 @@
       "mode": "100644",
       "inputBytes": 37149,
       "outputBytes": 37149
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/EXACT-STAGING-RUN.md",
+      "path": "ops/cnyos-staging-controller/EXACT-STAGING-RUN.md",
+      "bytes": 2797,
+      "inputSha256": "0cdaa11bf8ae99816fcac93b16886063be5b65a4a25ba941d1f6c4a991afcf76",
+      "outputSha256": "0cdaa11bf8ae99816fcac93b16886063be5b65a4a25ba941d1f6c4a991afcf76",
+      "mode": "100644",
+      "inputBytes": 2797,
+      "outputBytes": 2797
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/exact-staging-release.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/exact-staging-release.mjs",
+      "bytes": 19060,
+      "inputSha256": "83bf87a09b09894732f2b6597017eef1af7b5b75cd1415f01268e859b3a65e6d",
+      "outputSha256": "83bf87a09b09894732f2b6597017eef1af7b5b75cd1415f01268e859b3a65e6d",
+      "mode": "100644",
+      "inputBytes": 19060,
+      "outputBytes": 19060
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/materialize-exact-staging-config.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/materialize-exact-staging-config.mjs",
+      "bytes": 1694,
+      "inputSha256": "9ace9128d565ab724231a36cef4053382398ba6996ac6f275e96271074dcee14",
+      "outputSha256": "9ace9128d565ab724231a36cef4053382398ba6996ac6f275e96271074dcee14",
+      "mode": "100644",
+      "inputBytes": 1694,
+      "outputBytes": 1694
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/prepare-exact-staging-release.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/prepare-exact-staging-release.mjs",
+      "bytes": 2088,
+      "inputSha256": "31e9e8607f5802c286003bffec71bf8590354a58f5dcf155a214f7892fcbb707",
+      "outputSha256": "31e9e8607f5802c286003bffec71bf8590354a58f5dcf155a214f7892fcbb707",
+      "mode": "100644",
+      "inputBytes": 2088,
+      "outputBytes": 2088
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/scripts/run-exact-staging-clinical-uat.mjs",
+      "path": "ops/cnyos-staging-controller/scripts/run-exact-staging-clinical-uat.mjs",
+      "bytes": 39293,
+      "inputSha256": "3285e498e7158ac89c5d113a07fe78544bb6839bbbd149993a4da9cb2131c100",
+      "outputSha256": "3285e498e7158ac89c5d113a07fe78544bb6839bbbd149993a4da9cb2131c100",
+      "mode": "100644",
+      "inputBytes": 39293,
+      "outputBytes": 39293
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-controller/tests/exact-staging-release-contract.mjs",
+      "path": "ops/cnyos-staging-controller/tests/exact-staging-release-contract.mjs",
+      "bytes": 10811,
+      "inputSha256": "19bc40352d87d5bc1c5b85605082696e0bc5e67507145e39f7f9c60113c0fe34",
+      "outputSha256": "19bc40352d87d5bc1c5b85605082696e0bc5e67507145e39f7f9c60113c0fe34",
+      "mode": "100644",
+      "inputBytes": 10811,
+      "outputBytes": 10811
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-publisher/package-lock.json",
+      "path": "ops/cnyos-staging-publisher/package-lock.json",
+      "bytes": 534210,
+      "inputSha256": "01513d744df3e1347171c14909cbddde2078f8b7127bb18d8a7775ed81fdd31d",
+      "outputSha256": "01513d744df3e1347171c14909cbddde2078f8b7127bb18d8a7775ed81fdd31d",
+      "mode": "100644",
+      "inputBytes": 534210,
+      "outputBytes": 534210
+    },
+    {
+      "sourcePath": "ops/cnyos-staging-publisher/package.json",
+      "path": "ops/cnyos-staging-publisher/package.json",
+      "bytes": 181,
+      "inputSha256": "1e13cdd7032a7f6becd1f38543cc2c00f6d30890e54d0645936f4756aaa101ea",
+      "outputSha256": "1e13cdd7032a7f6becd1f38543cc2c00f6d30890e54d0645936f4756aaa101ea",
+      "mode": "100644",
+      "inputBytes": 181,
+      "outputBytes": 181
     }
   ],
   "deploymentAuthorized": false,
