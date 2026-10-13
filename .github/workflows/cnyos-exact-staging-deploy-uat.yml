@@ -187,29 +187,23 @@ jobs:
           CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
         run: node scripts/prepare-exact-staging-release.mjs
 
-      - name: Publish exact artifact to the fixed isolated staging site
-        working-directory: candidate-source
-        shell: bash
+      - name: Persist intent and attempt exact publish to fixed isolated staging
+        id: publish_attempt
+        working-directory: ops/cnyos-staging-controller
         env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: 887e058b-6e13-461f-b3c7-ae096b7046fe
-        run: |
-          set -Eeuo pipefail
-          receipt="${CNYOS_EXACT_STAGING_WORK_DIRECTORY:?}/private/netlify-deploy-receipt.json"
-          test ! -e "$receipt"
-          umask 077
-          "$GITHUB_WORKSPACE/ops/cnyos-staging-publisher/node_modules/.bin/netlify" deploy \
-            --prod --no-build --json --context production \
-            --site 887e058b-6e13-461f-b3c7-ae096b7046fe \
-            --dir "${CNYOS_STAGING_ARTIFACT_DIRECTORY:?}/dist" \
-            --functions "${CNYOS_STAGING_ARTIFACT_DIRECTORY:?}/functions" \
-            --skip-functions-cache \
-            --message "cnyos-exact-staging:${CNYOS_EXPECTED_SOURCE_COMMIT}:${GITHUB_RUN_ID}" \
-            --timeout 120 > "$receipt"
-          test -s "$receipt"
-          test "$(stat -c '%a' "$receipt")" = "600"
+          CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
+        run: node scripts/exact-staging-publish.mjs attempt
+
+      - name: Always reconcile the authoritative canonical staging deploy
+        id: reconcile_publish
+        if: ${{ always() && steps.publish_attempt.outcome != 'skipped' }}
+        working-directory: ops/cnyos-staging-controller
+        env:
+          CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
+        run: node scripts/exact-staging-publish.mjs reconcile
 
       - name: Provision seven synthetic roles and run one bounded hosted journey
+        if: ${{ steps.reconcile_publish.outputs.publish_reconciled == 'true' }}
         working-directory: ops/cnyos-staging-controller
         env:
           CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
@@ -218,33 +212,11 @@ jobs:
           CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD: ${{ secrets.CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD }}
         run: node scripts/run-exact-staging-clinical-uat.mjs
 
-      - name: Require complete secret-free terminal evidence
+      - name: Generate secret-free terminal success, failure or uncertainty evidence
         id: terminal-evidence
-        if: ${{ success() }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          upload_dir="${CNYOS_EXACT_STAGING_WORK_DIRECTORY:?}/upload"
-          expected=(
-            candidate-binding.json
-            deploy-receipt.json
-            evidence-manifest.json
-            fixture-evidence.json
-            rollback-baseline.json
-            uat-evidence.json
-          )
-          for name in "${expected[@]}"; do
-            file="$upload_dir/$name"
-            test -f "$file"
-            test ! -L "$file"
-            test -s "$file"
-            test "$(stat -c '%a' "$file")" = "600"
-            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$file"
-          done
-          mapfile -t actual < <(find "$upload_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
-          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)
-          test "${#actual[@]}" -eq "${#wanted[@]}"
-          test "$(printf '%s\n' "${actual[@]}")" = "$(printf '%s\n' "${wanted[@]}")"
+        if: ${{ always() }}
+        working-directory: ops/cnyos-staging-controller
+        run: node scripts/exact-staging-publish.mjs finalize
 
       - name: Retain bounded staging evidence even when UAT stops
         if: ${{ always() }}

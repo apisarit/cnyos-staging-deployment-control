@@ -473,6 +473,7 @@ const protectedFoundationScripts = [
   'controller-uat-browser-matrix.mjs',
   'controller-uat-evidence-publication.mjs',
   'controller-uat-subscription-evidence.mjs',
+  'exact-staging-publish.mjs',
   'exact-staging-release.mjs',
   'materialize-exact-staging-config.mjs',
   'prepare-exact-staging-release.mjs',

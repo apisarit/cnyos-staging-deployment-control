@@ -21,6 +21,7 @@ const FOUNDATION_SCRIPTS = Object.freeze([
   'scripts/controller-uat-browser-matrix.mjs',
   'scripts/controller-uat-evidence-publication.mjs',
   'scripts/controller-uat-subscription-evidence.mjs',
+  'scripts/exact-staging-publish.mjs',
   'scripts/exact-staging-release.mjs',
   'scripts/materialize-exact-staging-config.mjs',
   'scripts/prepare-exact-staging-release.mjs',

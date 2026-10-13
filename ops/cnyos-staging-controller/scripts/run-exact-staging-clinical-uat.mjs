@@ -7,7 +7,9 @@ import process from 'node:process';
 import {
   EXACT_STAGING_TARGET,
   ExactStagingReleaseError,
+  assertScopedOpdWriteBody,
   assertSecretFreeEvidence,
+  createScopedOpdWriteLedger,
   loadExactStagingConfig,
   parseNetlifyDeployReceipt,
   sha256,
@@ -298,9 +300,9 @@ async function verifyHostedRelease(config, receipt, token, artifact) {
   }
 }
 
-async function installBrowserGuard(context, config, budget, scope) {
+async function installBrowserGuard(context, config, budget, scope, writeLedger) {
   const exactOrigin = config.exactOrigin;
-  const browserState = { opdWrites: 0, blocked: null };
+  const browserState = { contextOrdinal: scope.contextOrdinal, opdWrites: 0, blocked: null };
   await context.route('**/*', async route => {
     const request = route.request();
     const method = request.method().toUpperCase();
@@ -345,7 +347,15 @@ async function installBrowserGuard(context, config, budget, scope) {
       const rpcName = url.pathname.slice('/rest/v1/rpc/'.length);
       if (READ_ONLY_BROWSER_RPCS.has(rpcName)) return route.continue();
       if (rpcName === 'save_ttm_opd_history') {
-        if (browserState.opdWrites >= config.limits.browserOpdWrites) {
+        try {
+          assertScopedOpdWriteBody(request.postData(), request.headers()['content-type'], scope);
+        } catch {
+          browserState.blocked = 'OPD_WRITE_SCOPE_INVALID';
+          return route.abort('blockedbyclient');
+        }
+        try {
+          writeLedger.reserve(scope.contextOrdinal);
+        } catch {
           browserState.blocked = 'OPD_WRITE_BUDGET_EXCEEDED';
           return route.abort('blockedbyclient');
         }
@@ -400,13 +410,14 @@ async function browserLogin(page, exactOrigin, account, password) {
   }
 }
 
-async function openOpd(browser, config, account, password, patientId, encounterId, budget) {
+async function openOpd(browser, config, account, password, patientId, encounterId, budget,
+  writeLedger, contextOrdinal) {
   const context = await browser.newContext({
     baseURL: config.exactOrigin, locale: 'en-US', serviceWorkers: 'block', acceptDownloads: false
   });
   const network = await installBrowserGuard(context, config, budget, {
-    patientId, encounterId, practitionerUserId: account.userId
-  });
+    patientId, encounterId, practitionerUserId: account.userId, contextOrdinal
+  }, writeLedger);
   const page = await context.newPage();
   page.on('dialog', dialog => dialog.dismiss());
   await browserLogin(page, config.exactOrigin, account, password);
@@ -431,9 +442,11 @@ async function submitOpd(page) {
 async function runBrowserOpdProof({ config, account, password, patientId, encounterId, budget }) {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
-  const evidence = { contexts: 0, saveReloadAmend: false, writes: 0 };
+  const writeLedger = createScopedOpdWriteLedger(config.limits.browserOpdWrites);
+  const evidence = { contexts: 0, saveReloadAmend: false, writes: 0, writeLedger: null };
   try {
-    let opened = await openOpd(browser, config, account, password, patientId, encounterId, budget);
+    let opened = await openOpd(browser, config, account, password, patientId, encounterId, budget,
+      writeLedger, 1);
     evidence.contexts += 1;
     try {
       for (const [selector, value] of OPD_FIELDS) await opened.page.locator(selector).fill(value);
@@ -442,7 +455,8 @@ async function runBrowserOpdProof({ config, account, password, patientId, encoun
       evidence.writes += opened.network.opdWrites;
     } finally { await opened.context.close(); }
 
-    opened = await openOpd(browser, config, account, password, patientId, encounterId, budget);
+    opened = await openOpd(browser, config, account, password, patientId, encounterId, budget,
+      writeLedger, 2);
     evidence.contexts += 1;
     try {
       for (const [selector, value] of OPD_FIELDS) {
@@ -455,14 +469,18 @@ async function runBrowserOpdProof({ config, account, password, patientId, encoun
       evidence.writes += opened.network.opdWrites;
     } finally { await opened.context.close(); }
 
-    opened = await openOpd(browser, config, account, password, patientId, encounterId, budget);
+    opened = await openOpd(browser, config, account, password, patientId, encounterId, budget,
+      writeLedger, 3);
     evidence.contexts += 1;
     try {
       assert.equal(await opened.page.inputValue('#opd-physical'), 'synthetic amended exam');
       assert.equal(await opened.page.inputValue('#opd-accident'), 'synthetic accident');
       if (opened.network.blocked) fail(`CNYOS_EXACT_STAGING_BROWSER_${opened.network.blocked}`);
     } finally { await opened.context.close(); }
-    if (evidence.writes !== config.limits.browserOpdWrites) {
+    evidence.writeLedger = writeLedger.evidence(evidence.contexts);
+    if (evidence.writes !== config.limits.browserOpdWrites ||
+      evidence.writeLedger.dispatched !== config.limits.browserOpdWrites ||
+      evidence.writeLedger.perContext.length !== evidence.contexts) {
       fail('CNYOS_EXACT_STAGING_BROWSER_OPD_WRITE_COUNT_INVALID');
     }
     evidence.saveReloadAmend = true;
@@ -748,7 +766,8 @@ async function main() {
     await writeFresh0600(path.join(config.uploadDirectory, 'fixture-evidence.json'), fixtureEvidence, secrets);
     await writeFresh0600(path.join(config.uploadDirectory, 'uat-evidence.json'), uatEvidence, secrets);
     const files = [
-      'candidate-binding.json', 'rollback-baseline.json', 'deploy-receipt.json',
+      'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
+      'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
       'fixture-evidence.json', 'uat-evidence.json'
     ];
     const entries = [];

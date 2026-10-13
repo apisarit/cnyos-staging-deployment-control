@@ -66,6 +66,7 @@ export const EXACT_STAGING_LIMITS = Object.freeze({
 const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DEPLOY_ID = /^[0-9a-f]{24}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RUN_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$/;
 const REQUIRED_RUNTIME_FILES = Object.freeze([
   'index.html', 'login.html', 'auth-callback.html', 'owner-control.html',
@@ -399,6 +400,164 @@ export function parseNetlifyDeployReceipt(value, config) {
     exactDeployOrigin: expectedExactOrigin,
     source: Object.freeze({ commit: config.appCommit, tree: config.appTree })
   });
+}
+
+function normalizedIdentifierKey(key) {
+  return String(key || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/^p_/, '');
+}
+
+function assertScopedIdentifier(value, expected, code) {
+  if (typeof value !== 'string' || value.toLowerCase() !== expected) fail(code);
+}
+
+const SCOPED_IDENTIFIER_DOMAINS = Object.freeze([
+  Object.freeze({ scope: 'encounter', aliases: Object.freeze(['encounter']) }),
+  Object.freeze({ scope: 'patient', aliases: Object.freeze(['patient']) }),
+  Object.freeze({
+    scope: 'actor', aliases: Object.freeze(['actor', 'practitioner', 'user'])
+  })
+]);
+
+function scopedIdentifierDomain(key, inheritedDomain = null) {
+  const normalized = normalizedIdentifierKey(key);
+  const tokens = normalized.split('_').filter(Boolean);
+  if (normalized === 'created_by' || normalized === 'updated_by') return 'actor';
+  if (inheritedDomain && ['id', 'uuid', 'identifier'].includes(normalized)) {
+    return inheritedDomain;
+  }
+  for (const { scope, aliases } of SCOPED_IDENTIFIER_DOMAINS) {
+    for (const alias of aliases) {
+      if (tokens.includes(alias) && tokens.some(token => ['id', 'uuid', 'identifier'].includes(token))) {
+        return scope;
+      }
+    }
+  }
+  return null;
+}
+
+function scopedContainerDomain(key) {
+  const tokens = normalizedIdentifierKey(key).split('_').filter(Boolean);
+  for (const { scope, aliases } of SCOPED_IDENTIFIER_DOMAINS) {
+    if (aliases.some(alias => tokens.includes(alias))) return scope;
+  }
+  return null;
+}
+
+/**
+ * Validate the exact browser mutation before Playwright can dispatch it.
+ * The application currently sends only p_encounter_id and p_history. The
+ * recursive identifier checks deliberately fail closed if a future candidate
+ * adds patient or actor identifiers anywhere in the request body.
+ */
+export function assertScopedOpdWriteBody(postData, contentType, scope) {
+  if (!plainObject(scope)) fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  const encounterId = exact(scope.encounterId, /^[0-9a-f-]{36}$/,
+    'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  const patientId = exact(scope.patientId, /^[0-9a-f-]{36}$/,
+    'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  const practitionerUserId = exact(scope.practitionerUserId, /^[0-9a-f-]{36}$/,
+    'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  if (!UUID_PATTERN.test(encounterId) || !UUID_PATTERN.test(patientId) ||
+    !UUID_PATTERN.test(practitionerUserId) ||
+    !/^application\/json(?:\s*;|$)/i.test(String(contentType || '').trim())) {
+    fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  }
+  if (typeof postData !== 'string' || Buffer.byteLength(postData) < 2 ||
+    Buffer.byteLength(postData) > 64 * 1024) {
+    fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  }
+  let body;
+  try { body = JSON.parse(postData); }
+  catch { fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID'); }
+  if (!plainObject(body) || !plainObject(body.p_history) ||
+    Object.keys(body).sort().join('\0') !== 'p_encounter_id\0p_history') {
+    fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+  }
+  assertScopedIdentifier(body.p_encounter_id, encounterId,
+    'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+
+  let visited = 0;
+  const expectedByDomain = Object.freeze({
+    encounter: encounterId, patient: patientId, actor: practitionerUserId
+  });
+  const visit = (value, depth = 0, inheritedDomain = null) => {
+    if (depth > 8 || ++visited > 512) fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1, inheritedDomain);
+      return;
+    }
+    if (!plainObject(value)) {
+      if (typeof value === 'string' && UUID_PATTERN.test(value.toLowerCase())) {
+        if (!inheritedDomain) fail('CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+        assertScopedIdentifier(value, expectedByDomain[inheritedDomain],
+          'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+      }
+      return;
+    }
+    for (const [key, nested] of Object.entries(value)) {
+      const identifierDomain = scopedIdentifierDomain(key, inheritedDomain);
+      if (identifierDomain) {
+        assertScopedIdentifier(nested, expectedByDomain[identifierDomain],
+          'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+      }
+      const containerDomain = scopedContainerDomain(key) || inheritedDomain;
+      if (!identifierDomain && scopedContainerDomain(key) && typeof nested === 'string' &&
+        UUID_PATTERN.test(nested.toLowerCase())) {
+        assertScopedIdentifier(nested, expectedByDomain[containerDomain],
+          'CNYOS_EXACT_STAGING_OPD_WRITE_SCOPE_INVALID');
+      }
+      visit(nested, depth + 1, containerDomain);
+    }
+  };
+  visit(body);
+  return Object.freeze({
+    encounterIdBound: true,
+    patientIdentifiersBoundWhenPresent: true,
+    actorIdentifiersBoundWhenPresent: true
+  });
+}
+
+export function createScopedOpdWriteLedger(limit = EXACT_STAGING_LIMITS.browserOpdWrites) {
+  if (!Number.isSafeInteger(limit) || limit !== EXACT_STAGING_LIMITS.browserOpdWrites) {
+    fail('CNYOS_EXACT_STAGING_OPD_WRITE_LEDGER_INVALID');
+  }
+  const records = [];
+  const reserve = contextOrdinal => {
+    if (!Number.isSafeInteger(contextOrdinal) || contextOrdinal < 1 || contextOrdinal > 16) {
+      fail('CNYOS_EXACT_STAGING_OPD_WRITE_LEDGER_INVALID');
+    }
+    if (records.length >= limit) fail('CNYOS_EXACT_STAGING_OPD_WRITE_BUDGET_EXCEEDED');
+    const record = Object.freeze({
+      ordinal: records.length + 1,
+      contextOrdinal,
+      rpc: 'save_ttm_opd_history',
+      reservedBeforeFetch: true
+    });
+    records.push(record);
+    return record;
+  };
+  const evidence = contextCount => {
+    if (!Number.isSafeInteger(contextCount) || contextCount < 1 || contextCount > 16 ||
+      records.some(record => record.contextOrdinal > contextCount)) {
+      fail('CNYOS_EXACT_STAGING_OPD_WRITE_LEDGER_INVALID');
+    }
+    return Object.freeze({
+      limit,
+      dispatched: records.length,
+      contextCount,
+      perContext: Object.freeze(Array.from({ length: contextCount }, (_, index) => Object.freeze({
+        contextOrdinal: index + 1,
+        writes: records.filter(record => record.contextOrdinal === index + 1).length
+      }))),
+      records: Object.freeze([...records])
+    });
+  };
+  return Object.freeze({ limit, reserve, count: () => records.length, evidence });
 }
 
 export function assertSecretFreeEvidence(value, secretValues = []) {

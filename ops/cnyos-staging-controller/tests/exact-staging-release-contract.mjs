@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,13 +15,23 @@ import {
   EXACT_STAGING_TARGET,
   EXACT_STAGING_WORKFLOW_PATH,
   ExactStagingReleaseError,
+  assertScopedOpdWriteBody,
   assertSecretFreeEvidence,
+  createScopedOpdWriteLedger,
   loadExactStagingConfig,
   parseNetlifyDeployReceipt,
   sha256,
   verifyExactStagingFunctionEnvironment,
   verifyExactStagingArtifact
 } from '../scripts/exact-staging-release.mjs';
+import {
+  classifyExactStagingPublishReconciliation,
+  createExactStagingPublishAttempt,
+  createExactStagingPublishIntent,
+  deriveExactStagingTerminalStatus,
+  executeExactStagingPublishAttempt,
+  reconcileExactStagingPublish
+} from '../scripts/exact-staging-publish.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(packageRoot, '..', '..');
@@ -31,6 +42,8 @@ const publisherLock = JSON.parse(await fs.readFile(path.join(repositoryRoot,
   'ops/cnyos-staging-publisher/package-lock.json'), 'utf8'));
 const runner = await fs.readFile(path.join(packageRoot,
   'scripts/run-exact-staging-clinical-uat.mjs'), 'utf8');
+const publisher = await fs.readFile(path.join(packageRoot,
+  'scripts/exact-staging-publish.mjs'), 'utf8');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cnyos-exact-staging-contract-'));
 const artifact = path.join(root, 'artifact');
 const dist = path.join(artifact, 'dist');
@@ -128,6 +141,77 @@ assert.throws(() => parseNetlifyDeployReceipt({
 assert.throws(() => assertSecretFreeEvidence({ leaked: 'prefix-SECRET-value' }, ['SECRET']),
   ExactStagingReleaseError);
 
+const encounterId = '11111111-1111-4111-a111-111111111111';
+const patientId = '22222222-2222-4222-a222-222222222222';
+const practitionerUserId = '33333333-3333-4333-a333-333333333333';
+const scopedBody = JSON.stringify({
+  p_encounter_id: encounterId,
+  p_history: { patient_id: patientId, actor_id: practitionerUserId, synthetic: true }
+});
+assert.deepEqual(assertScopedOpdWriteBody(scopedBody, 'application/json; charset=UTF-8', {
+  encounterId, patientId, practitionerUserId
+}), {
+  encounterIdBound: true,
+  patientIdentifiersBoundWhenPresent: true,
+  actorIdentifiersBoundWhenPresent: true
+});
+for (const body of [
+  JSON.stringify({ p_encounter_id: patientId, p_history: {} }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { patient_id: encounterId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { patient_uuid: encounterId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { 'patient-id': encounterId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { id_for_patient: encounterId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { updated_by: patientId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { actor_uuid: patientId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { patient: { id: encounterId } } }),
+  JSON.stringify({ p_encounter_id: encounterId,
+    p_history: { patient_identity: { uuid: encounterId } } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { actor: { id: patientId } } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: { opaque_reference: patientId } }),
+  JSON.stringify({ p_encounter_id: encounterId, p_history: {}, patient_uuid: patientId }),
+  JSON.stringify({ p_encounter_id: encounterId }),
+  '{'
+]) {
+  assert.throws(() => assertScopedOpdWriteBody(body, 'application/json', {
+    encounterId, patientId, practitionerUserId
+  }), ExactStagingReleaseError);
+}
+assert.throws(() => assertScopedOpdWriteBody(scopedBody, 'text/plain', {
+  encounterId, patientId, practitionerUserId
+}), ExactStagingReleaseError);
+assert.deepEqual(assertScopedOpdWriteBody(JSON.stringify({
+  p_encounter_id: encounterId,
+  p_history: {
+    patient_uuid: patientId,
+    actor: { id: practitionerUserId },
+    source_patient_identifier: patientId
+  }
+}), 'application/json', { encounterId, patientId, practitionerUserId }), {
+  encounterIdBound: true,
+  patientIdentifiersBoundWhenPresent: true,
+  actorIdentifiersBoundWhenPresent: true
+});
+
+const browserWriteLedger = createScopedOpdWriteLedger(2);
+browserWriteLedger.reserve(1);
+browserWriteLedger.reserve(2);
+assert.throws(() => browserWriteLedger.reserve(3),
+  /CNYOS_EXACT_STAGING_OPD_WRITE_BUDGET_EXCEEDED/);
+assert.deepEqual(browserWriteLedger.evidence(3), {
+  limit: 2,
+  dispatched: 2,
+  contextCount: 3,
+  perContext: [
+    { contextOrdinal: 1, writes: 1 },
+    { contextOrdinal: 2, writes: 1 },
+    { contextOrdinal: 3, writes: 0 }
+  ],
+  records: [
+    { ordinal: 1, contextOrdinal: 1, rpc: 'save_ttm_opd_history', reservedBeforeFetch: true },
+    { ordinal: 2, contextOrdinal: 2, rpc: 'save_ttm_opd_history', reservedBeforeFetch: true }
+  ]
+});
+
 const functionEnvironment = verifyExactStagingFunctionEnvironment(config, 'n'.repeat(32), {
   cliPath: '/locked/netlify',
   env: {
@@ -190,13 +274,22 @@ assert.match(workflow, /XDG_CONFIG_HOME: \$\{\{ runner\.temp \}\}\/cnyos-netlify
 assert.match(workflow, /XDG_CACHE_HOME: \$\{\{ runner\.temp \}\}\/cnyos-netlify-cache/);
 assert.match(workflow, /mkdir -m 700 "\$XDG_CONFIG_HOME" "\$XDG_CACHE_HOME"/);
 assert.doesNotMatch(workflow, /npx\s|npm exec|--yes/);
+assert.match(workflow, /exact-staging-publish\.mjs attempt/);
+assert.match(workflow, /if: \$\{\{ always\(\) && steps\.publish_attempt\.outcome != 'skipped' \}\}/);
+assert.match(workflow, /exact-staging-publish\.mjs reconcile/);
 assert.match(workflow,
-  /ops\/cnyos-staging-publisher\/node_modules\/\.bin\/netlify" deploy/);
+  /if: \$\{\{ steps\.reconcile_publish\.outputs\.publish_reconciled == 'true' \}\}/);
+assert.match(workflow, /if: \$\{\{ always\(\) \}\}[\s\S]*exact-staging-publish\.mjs finalize/);
+assert.match(publisher, /'deploy', '--prod', '--no-build', '--json'/);
+assert.match(publisher, /kind: 'cnyos_exact_staging_publish_intent'/);
+assert.match(publisher, /kind: 'cnyos_exact_staging_publish_reconciliation'/);
+assert.match(publisher, /kind: 'cnyos_exact_staging_terminal_evidence'/);
+assert.doesNotMatch(publisher, /\/restore\b|deploys\/[^'"`]+\/restore/);
 assert.equal(publisherPackage.dependencies['netlify-cli'], '23.1.2');
 assert.equal(publisherLock.packages[''].dependencies['netlify-cli'], '23.1.2');
 assert.equal(publisherLock.packages['node_modules/netlify-cli'].version, '23.1.2');
 assert.match(publisherLock.packages['node_modules/netlify-cli'].integrity, /^sha512-/);
-assert.match(workflow, /--site 887e058b-6e13-461f-b3c7-ae096b7046fe/);
+assert.match(publisher, /'--site', EXACT_STAGING_TARGET\.netlifySiteId/);
 assert.doesNotMatch(workflow, /--site\s+\$\{\{/);
 assert.match(workflow, /hsmnjwxurlmsizndjlun/);
 assert.match(workflow, /qptxnrldzzinlcabudjv/);
@@ -221,10 +314,140 @@ assert.match(runner, /SYNTHETIC-E2E/);
 assert.match(runner, /browserOpdWrites/);
 assert.match(runner, /stoppedWithoutRetry: true/);
 assert.match(runner, /route\.fetch\(\{ timeout: config\.limits\.requestTimeoutMs \}\)/);
+assert.ok(runner.indexOf('assertScopedOpdWriteBody(') < runner.indexOf('route.fetch({ timeout:'),
+  'the scoped request body must be validated before route.fetch');
+assert.ok(runner.indexOf('writeLedger.reserve(') < runner.indexOf('route.fetch({ timeout:'),
+  'the shared write ledger must reserve capacity before route.fetch');
+assert.match(runner, /createScopedOpdWriteLedger\(config\.limits\.browserOpdWrites\)/);
+assert.match(runner, /writeLedger\.evidence\(evidence\.contexts\)/);
 assert.match(runner, /OPD_WRITE_TRANSPORT_UNCERTAIN/);
 assert.match(runner, /writeFresh0600\(path\.join\(config\.uploadDirectory, 'deploy-receipt\.json'/);
 assert.match(runner, /kind: 'cnyos_exact_staging_deploy_receipt_error'/);
 assert.match(runner, /rawSha256: receiptBytes \? sha256\(receiptBytes\) : null/);
 assert.match(runner, /deployReceiptCaptured: receipt !== null/);
+
+const binding = {
+  kind: 'cnyos_exact_staging_candidate_binding', stagingOnly: true,
+  productionAuthorized: false, source: { commit, tree },
+  target: {
+    siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin,
+    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef
+  }, rollbackBaselineDeployId: rollback,
+  artifact: verified.artifact
+};
+const baseline = {
+  kind: 'cnyos_exact_staging_rollback_baseline',
+  siteId: EXACT_STAGING_TARGET.netlifySiteId, deployId: rollback
+};
+const intent = createExactStagingPublishIntent(config, binding, baseline, {
+  now: '2026-10-13T00:01:00.000Z', workflowRunId: '12345'
+});
+assert.equal(intent.automaticRollbackAuthorized, false);
+for (const artifactKey of [
+  'deployManifestSha256', 'runtimeManifestSha256',
+  'functionManifestSha256', 'functionTreeSha256'
+]) {
+  assert.throws(() => createExactStagingPublishIntent(config, {
+    ...binding, artifact: { ...binding.artifact, [artifactKey]: 'not-a-sha256' }
+  }, baseline), /CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+}
+const attempt = createExactStagingPublishAttempt(intent, {
+  status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' }
+}, Buffer.alloc(0), Buffer.from('redacted'), {
+  startedAt: '2026-10-13T00:02:00.000Z', completedAt: '2026-10-13T00:04:30.000Z',
+  receiptCaptured: false, outputSecretBoundaryViolated: false
+});
+assert.equal(attempt.cliOutcome, 'TIMEOUT');
+assert.equal(attempt.status, 'UNKNOWN_PENDING_RECONCILIATION');
+assert.deepEqual(classifyExactStagingPublishReconciliation({
+  baselineDeployId: rollback,
+  observation: { currentDeployId: 'd'.repeat(24), candidateMatches: true }
+}), { status: 'PASS', result: 'APPLIED_VERIFIED' });
+assert.deepEqual(classifyExactStagingPublishReconciliation({
+  baselineDeployId: rollback,
+  observation: { currentDeployId: rollback, candidateMatches: false }
+}), { status: 'UNCERTAIN', result: 'ATTEMPT_DEPLOY_ID_UNKNOWN' });
+assert.deepEqual(classifyExactStagingPublishReconciliation({
+  baselineDeployId: rollback, receiptDeployId: 'd'.repeat(24), attemptedDeployState: 'error',
+  observation: { currentDeployId: rollback, candidateMatches: false }
+}), { status: 'FAIL', result: 'ATTEMPT_TERMINAL_FAILURE' });
+assert.deepEqual(classifyExactStagingPublishReconciliation({
+  baselineDeployId: rollback, receiptDeployId: 'd'.repeat(24), attemptedDeployState: 'ready',
+  observation: { currentDeployId: rollback, candidateMatches: false }
+}), { status: 'FAIL', result: 'ATTEMPT_READY_NOT_CANONICAL' });
+assert.equal(deriveExactStagingTerminalStatus('PASS', 'PASS', true), 'PASS');
+assert.equal(deriveExactStagingTerminalStatus('PASS', 'FAIL', true), 'FAIL');
+assert.equal(deriveExactStagingTerminalStatus('UNCERTAIN', 'FAIL', false), 'UNCERTAIN');
+
+const publishWork = path.join(root, 'publish-work');
+const publishConfig = loadExactStagingConfig({
+  CNYOS_EXPECTED_SOURCE_COMMIT: commit,
+  CNYOS_EXPECTED_SOURCE_TREE: tree,
+  CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
+  CNYOS_STAGING_RUN_REFERENCE: 'exact-staging-publish-contract-20261013',
+  CNYOS_STAGING_ARTIFACT_DIRECTORY: artifact,
+  CNYOS_EXACT_STAGING_WORK_DIRECTORY: publishWork
+});
+await fs.mkdir(publishConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+await fs.mkdir(publishConfig.privateDirectory, { recursive: true, mode: 0o700 });
+for (const [name, value] of [
+  ['candidate-binding.json', binding], ['rollback-baseline.json', baseline]
+]) {
+  await fs.writeFile(path.join(publishConfig.uploadDirectory, name),
+    `${JSON.stringify(value)}\n`, { mode: 0o600 });
+}
+const githubOutput = path.join(root, 'github-output');
+const token = 'netlify-token-not-a-secret-fixture';
+const attemptEvidence = await executeExactStagingPublishAttempt(publishConfig, token, {
+  env: {
+    GITHUB_WORKSPACE: root, GITHUB_RUN_ID: '12345', PATH: '/usr/bin', HOME: root,
+    XDG_CONFIG_HOME: path.join(root, 'xdg-config'), XDG_CACHE_HOME: path.join(root, 'xdg-cache')
+  },
+  cliPath: '/locked/netlify', candidateDirectory: root,
+  now: (() => {
+    const values = ['2026-10-13T00:10:00.000Z', '2026-10-13T00:10:01.000Z',
+      '2026-10-13T00:10:02.000Z'];
+    return () => values.shift();
+  })(),
+  spawnSyncImpl: (executable, args, options) => {
+    assert.equal(executable, '/locked/netlify');
+    assert.equal(args[0], 'deploy');
+    assert.equal(options.env.NETLIFY_AUTH_TOKEN, token);
+    assert.equal(existsSync(path.join(publishConfig.uploadDirectory, 'publish-intent.json')), true,
+      'intent must be durable before invoking the publisher');
+    return { status: 1, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.from('redacted') };
+  }
+});
+assert.equal(attemptEvidence.cliOutcome, 'EXIT_NONZERO');
+const candidateDeployId = 'd'.repeat(24);
+const runtimeManifestBytes = await fs.readFile(path.join(dist, 'runtime-publish-manifest.json'));
+const response = value => new Response(typeof value === 'string' || Buffer.isBuffer(value)
+  ? value : JSON.stringify(value), { status: 200 });
+const reconciled = await reconcileExactStagingPublish(publishConfig, token, {
+  env: { GITHUB_OUTPUT: githubOutput }, attempts: 1, delayMs: 0,
+  now: () => '2026-10-13T00:11:00.000Z',
+  fetchImpl: async urlValue => {
+    const url = String(urlValue);
+    if (url === `https://api.netlify.com/api/v1/sites/${EXACT_STAGING_TARGET.netlifySiteId}`) {
+      return response({
+        id: EXACT_STAGING_TARGET.netlifySiteId, name: EXACT_STAGING_TARGET.netlifySiteName,
+        ssl_url: EXACT_STAGING_TARGET.origin, published_deploy: { id: candidateDeployId }
+      });
+    }
+    if (url === `https://api.netlify.com/api/v1/deploys/${candidateDeployId}`) {
+      return response({ id: candidateDeployId, site_id: EXACT_STAGING_TARGET.netlifySiteId,
+        state: 'ready' });
+    }
+    if (url.endsWith('/deploy-manifest.json')) return response(deployManifest);
+    if (url.endsWith('/runtime-publish-manifest.json')) return response(runtimeManifestBytes);
+    throw new Error(`unexpected fetch ${url}`);
+  }
+});
+assert.equal(reconciled.status, 'PASS');
+assert.equal(reconciled.result, 'APPLIED_VERIFIED');
+assert.equal(reconciled.cliOutcome, 'EXIT_NONZERO');
+assert.equal(existsSync(path.join(publishConfig.privateDirectory,
+  'netlify-deploy-receipt.json')), true);
+assert.match(await fs.readFile(githubOutput, 'utf8'), /publish_reconciled=true/);
 
 process.stdout.write('Exact staging release contracts passed.\n');
