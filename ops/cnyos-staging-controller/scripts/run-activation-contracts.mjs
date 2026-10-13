@@ -21,6 +21,10 @@ const FOUNDATION_SCRIPTS = Object.freeze([
   'scripts/controller-uat-browser-matrix.mjs',
   'scripts/controller-uat-evidence-publication.mjs',
   'scripts/controller-uat-subscription-evidence.mjs',
+  'scripts/exact-staging-release.mjs',
+  'scripts/materialize-exact-staging-config.mjs',
+  'scripts/prepare-exact-staging-release.mjs',
+  'scripts/run-exact-staging-clinical-uat.mjs',
   'scripts/create-producer-bundle.mjs',
   'scripts/finalize-evidence.mjs',
   'scripts/netlify-evidence.mjs',
@@ -150,6 +154,11 @@ export const ACTIVATION_PAIRS = Object.freeze([
 ]);
 
 const BASE_TESTS = Object.freeze([
+  Object.freeze({
+    id: 'exact-staging-release',
+    path: 'tests/exact-staging-release-contract.mjs',
+    marker: 'Exact staging release contracts passed.'
+  }),
   Object.freeze({
     id: 'local-bounded-treatment-workflow',
     path: 'tests/local-bounded-treatment-workflow-contract.mjs',

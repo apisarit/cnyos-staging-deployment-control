@@ -355,7 +355,8 @@ assert.equal(packageManifest.scripts.test,
   'node tests/provision-bounded-treatment-fixture-contract.mjs && ' +
   'node tests/protected-bounded-treatment-workflow-contract.mjs && ' +
   'node tests/local-controller-runtime-contract.mjs && ' +
-  'node tests/local-bounded-treatment-workflow-contract.mjs');
+  'node tests/local-bounded-treatment-workflow-contract.mjs && ' +
+  'node tests/exact-staging-release-contract.mjs');
 const defaultTestFiles = packageManifest.scripts.test.split(' && ').map(command => {
   assert.match(command, /^node tests\/[a-z0-9-]+-contract\.mjs$/,
     'default contracts must run explicitly without shell fallbacks');
@@ -472,6 +473,10 @@ const protectedFoundationScripts = [
   'controller-uat-browser-matrix.mjs',
   'controller-uat-evidence-publication.mjs',
   'controller-uat-subscription-evidence.mjs',
+  'exact-staging-release.mjs',
+  'materialize-exact-staging-config.mjs',
+  'prepare-exact-staging-release.mjs',
+  'run-exact-staging-clinical-uat.mjs',
   'create-producer-bundle.mjs',
   'finalize-evidence.mjs',
   'netlify-evidence.mjs',
@@ -487,6 +492,7 @@ assert.deepEqual(CLOSED_WORLD_SCRIPT_INVENTORY, [...new Set([
   ...protectedActivationPairs.flatMap(pair => pair.scripts.map(item => path.posix.basename(item)))
 ])].sort());
 assert.deepEqual(CLOSED_WORLD_TEST_INVENTORY, [
+  'exact-staging-release-contract.mjs',
   'bounded-treatment-uat-contract.mjs',
   'local-bounded-treatment-workflow-contract.mjs',
   'local-controller-runtime-contract.mjs',
