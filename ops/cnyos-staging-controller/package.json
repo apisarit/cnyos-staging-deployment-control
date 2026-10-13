@@ -7,11 +7,21 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node tests/controller-contract.mjs && node tests/evidence-publication-contract.mjs && node tests/uat-evidence-schema-contract.mjs && node tests/live-github-release-boundary-contract.mjs && node tests/authorization-foundation-security-contract.mjs && node tests/rollback-principal-boundary-contract.mjs && node tests/rollback-authorization-chain-contract.mjs && node tests/controller-static-reproducibility-contract.mjs && node tests/controller-function-bundle-contract.mjs && node tests/function-recipe-input-contract.mjs && node tests/function-comparison-handoff-contract.mjs && node tests/controller-authenticated-uat-contract.mjs && node tests/controller-uat-evidence-publication-contract.mjs && node tests/controller-uat-access-observations-contract.mjs && node tests/controller-uat-browser-read-policy-contract.mjs && node tests/controller-uat-browser-transport-contract.mjs && node tests/controller-uat-browser-matrix-contract.mjs && node tests/rollback-attestation-deposit-contract.mjs && node tests/release-state-reconciliation-contract.mjs && node tests/netlify-control-file-behavior-contract.mjs && node tests/private-draft-access-boundary-contract.mjs && node tests/scheduled-function-route-denial-contract.mjs && node tests/live-netlify-authority-boundary-contract.mjs && node tests/backup-disable-runtime-boundary-contract.mjs && node tests/runtime-capability-boundary-contract.mjs && node tests/draft-mutation-recovery-contract.mjs && node tests/private-draft-lifecycle-contract.mjs && node tests/netlify-exclusive-publisher-contract.mjs && node tests/rollback-readiness-contract.mjs && node tests/external-broker-trust-boundaries-contract.mjs",
-    "test:activation": "node scripts/run-activation-contracts.mjs"
+    "test": "node tests/controller-contract.mjs && node tests/evidence-publication-contract.mjs && node tests/uat-evidence-schema-contract.mjs && node tests/live-github-release-boundary-contract.mjs && node tests/authorization-foundation-security-contract.mjs && node tests/rollback-principal-boundary-contract.mjs && node tests/rollback-authorization-chain-contract.mjs && node tests/controller-static-reproducibility-contract.mjs && node tests/controller-function-bundle-contract.mjs && node tests/function-recipe-input-contract.mjs && node tests/function-comparison-handoff-contract.mjs && node tests/controller-authenticated-uat-contract.mjs && node tests/controller-uat-evidence-publication-contract.mjs && node tests/controller-uat-access-observations-contract.mjs && node tests/controller-uat-browser-read-policy-contract.mjs && node tests/controller-uat-browser-transport-contract.mjs && node tests/controller-uat-browser-matrix-contract.mjs && node tests/rollback-attestation-deposit-contract.mjs && node tests/release-state-reconciliation-contract.mjs && node tests/netlify-control-file-behavior-contract.mjs && node tests/private-draft-access-boundary-contract.mjs && node tests/scheduled-function-route-denial-contract.mjs && node tests/live-netlify-authority-boundary-contract.mjs && node tests/backup-disable-runtime-boundary-contract.mjs && node tests/runtime-capability-boundary-contract.mjs && node tests/draft-mutation-recovery-contract.mjs && node tests/private-draft-lifecycle-contract.mjs && node tests/netlify-exclusive-publisher-contract.mjs && node tests/rollback-readiness-contract.mjs && node tests/external-broker-trust-boundaries-contract.mjs && node tests/bounded-treatment-uat-contract.mjs && node tests/provision-bounded-treatment-fixture-contract.mjs && node tests/protected-bounded-treatment-workflow-contract.mjs && node tests/local-controller-runtime-contract.mjs && node tests/local-bounded-treatment-workflow-contract.mjs && node tests/exact-staging-release-contract.mjs",
+    "test:activation": "node scripts/run-activation-contracts.mjs",
+    "test:treatment:bounded": "node tests/bounded-treatment-uat-contract.mjs",
+    "test:treatment:fixture": "node tests/provision-bounded-treatment-fixture-contract.mjs",
+    "uat:treatment:bounded": "node scripts/bounded-treatment-uat.mjs",
+    "uat:treatment:protected": "node scripts/run-protected-bounded-treatment-uat.mjs",
+    "test:treatment:local-controller": "node tests/local-controller-runtime-contract.mjs && node tests/local-bounded-treatment-workflow-contract.mjs",
+    "test:staging:exact": "node tests/exact-staging-release-contract.mjs",
+    "uat:staging:exact": "node scripts/run-exact-staging-clinical-uat.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "10.7.13",
     "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "playwright": "1.55.1"
   }
 }

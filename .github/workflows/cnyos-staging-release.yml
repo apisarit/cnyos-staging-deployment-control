@@ -1,0 +1,179 @@
+name: Protected bounded staging treatment UAT
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_commit:
+        description: Exact lowercase 40-character application commit
+        required: true
+        type: string
+      app_tree:
+        description: Exact lowercase 40-character application tree
+        required: true
+        type: string
+      netlify_deploy_id:
+        description: Exact lowercase 24-character immutable Netlify deploy ID
+        required: true
+        type: string
+      run_id:
+        description: Opaque external run reference (hashed before any clinical write or evidence)
+        required: true
+        type: string
+      practitioner_email:
+        description: Fresh staging-only synthetic Practitioner email
+        required: true
+        type: string
+
+# Credentials must exist only on the protected cnyos-staging-publish Environment.
+# This workflow deliberately has no OIDC permission and no production target.
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize all writers for the one policy-bound staging site. A run-scoped
+  # group would permit concurrent writes to the same synthetic-data target.
+  group: cnyos-bounded-treatment-887e058b-6e13-461f-b3c7-ae096b7046fe
+  cancel-in-progress: false
+
+jobs:
+  admit-controller-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Reject every non-protected or non-initial main dispatch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "apisarit/cnyos-staging-deployment-control"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$GITHUB_WORKFLOW_REF" = "apisarit/cnyos-staging-deployment-control/.github/workflows/cnyos-staging-release.yml@refs/heads/main"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+
+  bounded-treatment:
+    needs: admit-controller-runtime
+    environment:
+      name: cnyos-staging-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CNYOS_CONTROLLER_EXPECTED_REPOSITORY: apisarit/cnyos-staging-deployment-control
+      CNYOS_CONTROLLER_PROTECTED_REF: refs/heads/main
+      CNYOS_CONTROLLER_WORKFLOW_PATH: .github/workflows/cnyos-staging-release.yml
+      CNYOS_CONTROLLER_ENVIRONMENT: cnyos-staging-publish
+      CNYOS_EXPECTED_SOURCE_COMMIT: ${{ inputs.app_commit }}
+      CNYOS_EXPECTED_SOURCE_TREE: ${{ inputs.app_tree }}
+      CNYOS_EXPECTED_NETLIFY_DEPLOY_ID: ${{ inputs.netlify_deploy_id }}
+      CNYOS_STAGING_PRACTITIONER_EMAIL: ${{ inputs.practitioner_email }}
+    steps:
+      - name: Initialize protected work directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf 'CNYOS_PROTECTED_UAT_WORK_DIRECTORY=%s/cnyos-protected-bounded-treatment-%s\n' \
+            "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}" >> "${GITHUB_ENV:?}"
+
+      - name: Checkout exact protected controller commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Verify protected controller runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "apisarit/cnyos-staging-deployment-control"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$GITHUB_WORKFLOW_REF" = "apisarit/cnyos-staging-deployment-control/.github/workflows/cnyos-staging-release.yml@refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+
+      - name: Install locked controller dependencies
+        working-directory: ops/cnyos-staging-controller
+        run: npm ci --ignore-scripts
+
+      - name: Install locked Chromium runtime
+        working-directory: ops/cnyos-staging-controller
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Provision one fixture and run exactly two treatment writes
+        working-directory: ops/cnyos-staging-controller
+        env:
+          CNYOS_TREATMENT_UAT_RUN_REFERENCE: ${{ inputs.run_id }}
+          CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          CNYOS_EXPECTED_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          CNYOS_STAGING_TEST_PASSWORD: ${{ secrets.CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD }}
+          CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
+        run: node scripts/run-protected-bounded-treatment-uat.mjs
+
+      - name: Require the complete secret-free terminal evidence set
+        id: terminal-evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          upload_dir="${CNYOS_PROTECTED_UAT_WORK_DIRECTORY}/upload"
+          test -d "$upload_dir"
+          test ! -L "$upload_dir"
+          expected=(
+            controller-admission-evidence.json
+            controller-authorization-bundle.json
+            evidence-manifest.json
+            provisioning-evidence.json
+            treatment-run-authorization.json
+            uat-evidence.json
+          )
+          for name in "${expected[@]}"; do
+            evidence_path="$upload_dir/$name"
+            test -f "$evidence_path"
+            test ! -L "$evidence_path"
+            test -s "$evidence_path"
+            test "$(stat -c '%a' "$evidence_path")" = "600"
+          done
+          mapfile -t actual < <(
+            find "$upload_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' |
+              LC_ALL=C sort
+          )
+          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)
+          test "${#actual[@]}" -eq "${#expected_sorted[@]}"
+          test "$(printf '%s\n' "${actual[@]}")" = \
+            "$(printf '%s\n' "${expected_sorted[@]}")"
+          node -e '
+            const fs = require("node:fs");
+            for (const filename of process.argv.slice(1)) {
+              JSON.parse(fs.readFileSync(filename, "utf8"));
+            }
+          ' "${expected[@]/#/$upload_dir/}"
+
+      - name: Upload secret-free bounded evidence
+        if: ${{ always() && steps.terminal-evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cnyos-bounded-treatment-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}/upload/controller-admission-evidence.json
+            ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}/upload/controller-authorization-bundle.json
+            ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}/upload/evidence-manifest.json
+            ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}/upload/provisioning-evidence.json
+            ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}/upload/treatment-run-authorization.json
+            ${{ runner.temp }}/cnyos-protected-bounded-treatment-${{ github.run_id }}/upload/uat-evidence.json
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 3

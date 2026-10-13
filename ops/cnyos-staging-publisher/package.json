@@ -1,0 +1,11 @@
+{
+  "name": "cnyos-staging-publisher-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "netlify-cli": "23.1.2"
+  }
+}

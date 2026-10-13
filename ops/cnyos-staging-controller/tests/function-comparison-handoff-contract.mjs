@@ -22,6 +22,9 @@ const absent = async filename => {
   await assert.rejects(fs.lstat(filename), error => error.code === 'ENOENT');
 };
 
+assert.ok(EXPECTED_FUNCTION_NAMES.includes('who-icd-search'),
+  'the exact deployment allowlist must include the tracked WHO ICD function');
+
 try {
   const candidateDirectory = path.join(root, 'candidate');
   await fs.mkdir(candidateDirectory, { mode: 0o700 });
@@ -82,7 +85,7 @@ try {
   assert.equal(result.producerEligible, false);
   for (const forbidden of ['evidenceType', 'importClosureComplete', 'externalImportsResolvedFromLock', 'netlifyCliVersion', 'controllerRunId']) assert.equal(Object.hasOwn(result, forbidden), false);
   assert.deepEqual(result.observations.map(item => item.declaredExecution), ['injected-test-double', 'injected-test-double']);
-  assert.equal(result.files.length, 11);
+  assert.equal(result.files.length, EXPECTED_FUNCTION_NAMES.length);
   assert.equal((await fs.stat(outputDirectory)).mode & 0o777, 0o700);
   for (const archive of result.files) {
     const filename = path.join(outputDirectory, archive.path);

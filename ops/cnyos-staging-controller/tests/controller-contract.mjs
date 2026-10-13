@@ -88,6 +88,19 @@ assert.equal(POLICY.controller.releaseWorkflowPath, '.github/workflows/cnyos-sta
 assert.equal(POLICY.controller.rollbackWorkflowPath,
   '.github/workflows/cnyos-staging-rollback-watchdog.yml');
 assert.equal(POLICY.target.netlifySiteId, '7da5e39e-580d-44f1-8623-605313e2fb2b');
+assert.deepEqual(POLICY.boundedTreatmentUatTarget, {
+  deploymentId: 'chananya-clinical-staging',
+  origin: 'https://cnyos-clinical-staging.netlify.app',
+  netlifySiteId: '887e058b-6e13-461f-b3c7-ae096b7046fe',
+  netlifySiteName: 'cnyos-clinical-staging',
+  supabaseProjectRef: POLICY.target.supabaseProjectRef,
+  supabaseOrigin: POLICY.target.supabaseOrigin,
+  clinicId: POLICY.target.clinicId,
+  clinicCode: POLICY.target.clinicCode
+});
+assert.notEqual(POLICY.boundedTreatmentUatTarget.netlifySiteId,
+  POLICY.target.netlifySiteId);
+assert.notEqual(POLICY.boundedTreatmentUatTarget.origin, POLICY.target.netlifyOrigin);
 assert.equal(POLICY.productionDenylist.netlifySiteId,
   'f1a31624-f90b-4d72-be3d-e91b7e2b2f38');
 assert.deepEqual(assertDeploymentBoundary(POLICY), {
@@ -337,7 +350,13 @@ assert.equal(packageManifest.scripts.test,
   'node tests/private-draft-lifecycle-contract.mjs && ' +
   'node tests/netlify-exclusive-publisher-contract.mjs && ' +
   'node tests/rollback-readiness-contract.mjs && ' +
-  'node tests/external-broker-trust-boundaries-contract.mjs');
+  'node tests/external-broker-trust-boundaries-contract.mjs && ' +
+  'node tests/bounded-treatment-uat-contract.mjs && ' +
+  'node tests/provision-bounded-treatment-fixture-contract.mjs && ' +
+  'node tests/protected-bounded-treatment-workflow-contract.mjs && ' +
+  'node tests/local-controller-runtime-contract.mjs && ' +
+  'node tests/local-bounded-treatment-workflow-contract.mjs && ' +
+  'node tests/exact-staging-release-contract.mjs');
 const defaultTestFiles = packageManifest.scripts.test.split(' && ').map(command => {
   assert.match(command, /^node tests\/[a-z0-9-]+-contract\.mjs$/,
     'default contracts must run explicitly without shell fallbacks');
@@ -356,11 +375,20 @@ assert.deepEqual([...defaultTestFiles].sort(), presentTestFiles,
   'npm test must cover every currently implemented offline contract');
 assert.equal(packageManifest.scripts['test:activation'],
   'node scripts/run-activation-contracts.mjs');
+assert.equal(packageManifest.scripts['uat:treatment:protected'],
+  'node scripts/run-protected-bounded-treatment-uat.mjs');
+assert.equal(packageManifest.scripts['test:treatment:local-controller'],
+  'node tests/local-controller-runtime-contract.mjs && ' +
+  'node tests/local-bounded-treatment-workflow-contract.mjs');
+assert.equal(packageManifest.scripts['uat:treatment:local'], undefined,
+  'local live UAT must start through the preload-sanitizing shell launcher, not npm');
 assert.doesNotMatch(packageManifest.scripts.test, /test:activation|run-activation-contracts/);
 assert.equal(lock.lockfileVersion, 3);
 assert.equal(lock.packages[''].dependencies['@netlify/blobs'], '10.7.13');
 assert.equal(lock.packages[''].dependencies.qrcode, '1.5.4');
-assert.equal(lock.packages[''].devDependencies, undefined);
+assert.deepEqual(lock.packages[''].devDependencies, { playwright: '1.55.1' });
+assert.equal(lock.packages['node_modules/playwright']?.version, '1.55.1');
+assert.equal(lock.packages['node_modules/playwright-core']?.version, '1.55.1');
 if (POLICY.publishing.netlifyCliVersion === '__AUDITED_NETLIFY_CLI_VERSION__') {
   assert.equal(lock.packages['node_modules/netlify-cli'], undefined);
 } else {
@@ -431,6 +459,12 @@ for (const { id, test } of protectedActivationPairs) {
   assert.equal(contract?.marker, `CNYOS activation contract ${id}: passed`);
 }
 const protectedFoundationScripts = [
+  'bounded-treatment-uat.mjs',
+  'local-controller-runtime.mjs',
+  'provision-bounded-treatment-fixture.mjs',
+  'run-local-bounded-treatment-uat.mjs',
+  'run-local-bounded-treatment-uat.sh',
+  'run-protected-bounded-treatment-uat.mjs',
   'materialize-function-recipe-input.mjs',
   'create-function-comparison-handoff.mjs',
   'controller-uat-access-observations.mjs',
@@ -439,6 +473,11 @@ const protectedFoundationScripts = [
   'controller-uat-browser-matrix.mjs',
   'controller-uat-evidence-publication.mjs',
   'controller-uat-subscription-evidence.mjs',
+  'exact-staging-publish.mjs',
+  'exact-staging-release.mjs',
+  'materialize-exact-staging-config.mjs',
+  'prepare-exact-staging-release.mjs',
+  'run-exact-staging-clinical-uat.mjs',
   'create-producer-bundle.mjs',
   'finalize-evidence.mjs',
   'netlify-evidence.mjs',
@@ -454,6 +493,12 @@ assert.deepEqual(CLOSED_WORLD_SCRIPT_INVENTORY, [...new Set([
   ...protectedActivationPairs.flatMap(pair => pair.scripts.map(item => path.posix.basename(item)))
 ])].sort());
 assert.deepEqual(CLOSED_WORLD_TEST_INVENTORY, [
+  'exact-staging-release-contract.mjs',
+  'bounded-treatment-uat-contract.mjs',
+  'local-bounded-treatment-workflow-contract.mjs',
+  'local-controller-runtime-contract.mjs',
+  'provision-bounded-treatment-fixture-contract.mjs',
+  'protected-bounded-treatment-workflow-contract.mjs',
   'function-recipe-input-contract.mjs',
   'function-comparison-handoff-contract.mjs',
   'controller-uat-access-observations-contract.mjs',

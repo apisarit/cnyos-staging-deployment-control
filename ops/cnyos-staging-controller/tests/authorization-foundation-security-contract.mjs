@@ -37,7 +37,8 @@ const FUNCTION_NAMES = Object.freeze([
   'owner-subscription',
   'patient-identity',
   'platform-console',
-  'restore-source'
+  'restore-source',
+  'who-icd-search'
 ]);
 const REQUIRED_SCHEDULES = Object.freeze({
   'database-backup': '0 20 * * *',
