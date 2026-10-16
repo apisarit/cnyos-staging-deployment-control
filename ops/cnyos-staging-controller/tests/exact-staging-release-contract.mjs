@@ -305,13 +305,33 @@ const workflowJobSlice = name => {
 };
 const buildJob = workflowJobSlice('build_candidate_artifact');
 const protectedJob = workflowJobSlice('exact-staging-deploy-uat');
+const sourceReadSecretName = 'CNYOS_APP_SOURCE_READ_TOKEN';
+const secretReferences = value => [...value.matchAll(
+  /\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}/g
+)].map(match => match[1]);
+const privateCheckoutStep = buildJob.match(
+  /      - name: Checkout exact private application commit\n[\s\S]*?(?=\n      - name:)/
+)?.[0];
 
 assert.match(buildJob, /^  build_candidate_artifact:\n    needs: admit-controller-runtime$/m);
 assert.match(buildJob, /repository: apisarit\/chananya-clinical-wellness-os/);
 assert.match(buildJob, /ref: \$\{\{ inputs\.app_commit \}\}/);
 assert.match(buildJob, /rev-parse 'HEAD\^\{tree\}'[\s\S]*CNYOS_EXPECTED_SOURCE_TREE/);
 assert.doesNotMatch(buildJob, /^    environment:/m);
-assert.doesNotMatch(buildJob, /\$\{\{\s*secrets\./);
+assert.ok(privateCheckoutStep, 'private application checkout step is missing');
+assert.match(privateCheckoutStep,
+  /uses: actions\/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5\.0\.1/);
+assert.match(privateCheckoutStep, /repository: apisarit\/chananya-clinical-wellness-os/);
+assert.match(privateCheckoutStep, /ref: \$\{\{ inputs\.app_commit \}\}/);
+assert.match(privateCheckoutStep, /path: candidate-source/);
+assert.match(privateCheckoutStep, /fetch-depth: 1/);
+assert.deepEqual(secretReferences(buildJob), [sourceReadSecretName]);
+assert.deepEqual(secretReferences(privateCheckoutStep), [sourceReadSecretName]);
+assert.match(privateCheckoutStep,
+  /token: \$\{\{ secrets\.CNYOS_APP_SOURCE_READ_TOKEN \}\}/);
+assert.match(privateCheckoutStep, /persist-credentials: false/);
+assert.doesNotMatch(buildJob.replace(privateCheckoutStep, ''),
+  /CNYOS_APP_SOURCE_READ_TOKEN|\$\{\{\s*secrets\./);
 for (const protectedName of EXACT_STAGING_SECRET_NAMES) {
   assert.doesNotMatch(buildJob, new RegExp(protectedName));
 }
@@ -333,6 +353,8 @@ assert.match(protectedJob,
 assert.match(protectedJob, /environment:\n\s+name: cnyos-staging-publish/);
 assert.doesNotMatch(protectedJob, /repository: apisarit\/chananya-clinical-wellness-os/);
 assert.doesNotMatch(protectedJob, /candidate-source/);
+assert.doesNotMatch(protectedJob, /CNYOS_APP_SOURCE_READ_TOKEN/);
+assert.equal((workflow.match(/CNYOS_APP_SOURCE_READ_TOKEN/g) || []).length, 1);
 assert.doesNotMatch(protectedJob,
   /npm run check|npm run build:staging-artifact|materialize-staging-functions\.mjs/);
 assert.equal((protectedJob.match(/uses: actions\/checkout@/g) || []).length, 1);

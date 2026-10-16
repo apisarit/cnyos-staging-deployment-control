@@ -92,13 +92,14 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Checkout exact public application commit
+      - name: Checkout exact private application commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           repository: apisarit/chananya-clinical-wellness-os
           ref: ${{ inputs.app_commit }}
           path: candidate-source
           fetch-depth: 1
+          token: ${{ secrets.CNYOS_APP_SOURCE_READ_TOKEN }}
           persist-credentials: false
 
       - name: Set up Node.js 24

@@ -2,7 +2,8 @@
 
 `cnyos-exact-staging-deploy-uat.yml` is a manual, staging-only release path.
 It uses two fresh GitHub-hosted runners. The first runner checks out one exact
-public application commit, verifies its tree, runs its contracts, builds a
+private application commit with a repository-scoped read-only source token,
+verifies its tree, runs its contracts, builds a
 closed-world staging artifact, and uploads it without access to the protected
 Environment or its secrets. The second runner checks out only the exact trusted
 controller, downloads that artifact by immutable artifact ID, re-verifies its
@@ -52,6 +53,16 @@ runner.
 - `CNYOS_STAGING_NETLIFY_AUTH_TOKEN`
 - `CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY`
 - `CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD`
+
+The controller repository also requires the repository secret
+`CNYOS_APP_SOURCE_READ_TOKEN`. It must be a short-lived fine-grained token whose
+resource owner is `apisarit`, whose only selected repository is
+`chananya-clinical-wellness-os`, and whose only repository permission is
+`Contents: Read`. The workflow references it exactly once as the pinned
+`actions/checkout` token. It is not placed in job or step environment, is not
+available to candidate commands, and checkout uses `persist-credentials: false`.
+Prefer a one-repository GitHub App installation token when that boundary is
+available; the fine-grained token is the reviewed bounded staging bridge.
 
 `CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY` is public browser configuration and is
 supplied only as a repository variable, never as an Environment secret. The
