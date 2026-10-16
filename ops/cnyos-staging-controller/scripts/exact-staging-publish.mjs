@@ -63,6 +63,81 @@ function plainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function expectedMutationLedger(roleKeys) {
+  const records = [];
+  const add = (name, authority, resource, statuses = [200]) => {
+    records.push({ name, authority, resource, statuses });
+  };
+  for (const role of roleKeys) {
+    add('create_auth_user', 'service_role', '/auth/v1/admin/users', [200, 201]);
+    add('upsert_profile', 'service_role', '/rest/v1/profiles', [200, 201]);
+    add('insert_clinic_membership', 'service_role', '/rest/v1/clinic_memberships', [200, 201]);
+  }
+  add('upsert_product_master', 'pharmacy_reviewer',
+    '/rest/v1/rpc/upsert_product_master');
+  add('set_clinic_product_price', 'billing', '/rest/v1/rpc/set_clinic_product_price');
+  add('insert_inventory_lot', 'service_role', '/rest/v1/inventory_lots', [200, 201]);
+  add('upsert_patient_registration', 'reception',
+    '/rest/v1/rpc/upsert_patient_registration');
+  add('create_practitioner_schedule', 'reception',
+    '/rest/v1/rpc/create_practitioner_schedule');
+  add('book_clinic_appointment', 'reception', '/rest/v1/rpc/book_clinic_appointment');
+  add('check_in_clinic_appointment', 'reception',
+    '/rest/v1/rpc/check_in_clinic_appointment');
+  add('set_clinic_appointment_status', 'source_practitioner',
+    '/rest/v1/rpc/set_clinic_appointment_status');
+  add('save_ttm_opd_history', 'source_practitioner', '/rest/v1/rpc/save_ttm_opd_history');
+  add('save_ttm_opd_history', 'source_practitioner', '/rest/v1/rpc/save_ttm_opd_history');
+  add('create_clinical_consult_request', 'source_practitioner',
+    '/rest/v1/rpc/create_clinical_consult_request');
+  add('transition_clinical_consult_request', 'source_practitioner',
+    '/rest/v1/rpc/transition_clinical_consult_request', [400]);
+  for (let index = 0; index < 3; index += 1) {
+    add('transition_clinical_consult_request', 'attending',
+      '/rest/v1/rpc/transition_clinical_consult_request');
+  }
+  add('create_ipd_admission_request', 'source_practitioner',
+    '/rest/v1/rpc/create_ipd_admission_request');
+  add('transition_ipd_admission', 'source_practitioner',
+    '/rest/v1/rpc/transition_ipd_admission', [400]);
+  add('transition_ipd_admission', 'reception', '/rest/v1/rpc/transition_ipd_admission');
+  add('transition_ipd_admission', 'attending', '/rest/v1/rpc/transition_ipd_admission');
+  for (let index = 0; index < 3; index += 1) {
+    add('append_ipd_clinical_entry', 'attending',
+      '/rest/v1/rpc/append_ipd_clinical_entry');
+  }
+  add('transition_ipd_admission', 'attending', '/rest/v1/rpc/transition_ipd_admission');
+  add('transition_ipd_admission', 'reception', '/rest/v1/rpc/transition_ipd_admission');
+  add('create_atomic_prescription_handoff', 'source_practitioner',
+    '/rest/v1/rpc/create_atomic_prescription_handoff');
+  add('transition_atomic_prescription_dispensing', 'pharmacy_reviewer',
+    '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+  add('transition_atomic_prescription_dispensing', 'pharmacy_dispenser',
+    '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+  add('transition_atomic_prescription_dispensing', 'pharmacy_dispenser',
+    '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+  add('issue_atomic_dispensing_invoice', 'billing',
+    '/rest/v1/rpc/issue_atomic_dispensing_invoice');
+  add('record_atomic_invoice_payment', 'billing',
+    '/rest/v1/rpc/record_atomic_invoice_payment');
+  return records;
+}
+
+function exactMutationLedger(value, roleKeys) {
+  if (!Array.isArray(value)) return false;
+  const expected = expectedMutationLedger(roleKeys);
+  const keys = ['authority', 'dispatched', 'name', 'ordinal', 'resource', 'status', 'uncertain'];
+  return value.length === expected.length && value.every((record, index) => {
+    const wanted = expected[index];
+    return plainObject(record) &&
+      JSON.stringify(Object.keys(record).sort()) === JSON.stringify(keys) &&
+      record.ordinal === index + 1 && record.name === wanted.name &&
+      record.authority === wanted.authority && record.resource === wanted.resource &&
+      record.dispatched === true && wanted.statuses.includes(record.status) &&
+      record.uncertain === false;
+  });
+}
+
 function required(value, code, maximum = 8192) {
   const result = String(value ?? '').trim();
   if (!result || result.length > maximum) fail(code);
@@ -728,6 +803,108 @@ function assertUatEvidence(config, uat, receipt, expectedDeployId) {
       { ordinal: 1, contextOrdinal: 1, rpc: 'save_ttm_opd_history', reservedBeforeFetch: true },
       { ordinal: 2, contextOrdinal: 2, rpc: 'save_ttm_opd_history', reservedBeforeFetch: true }
     ];
+    const expectedConsultEvents = ['requested', 'acknowledged', 'accepted', 'completed'];
+    const expectedIpdEntries = [
+      'admission_request', 'admission_note', 'progress_note',
+      'medication_reconciliation', 'discharge_summary'
+    ];
+    const expectedIpdEvents = [
+      'requested', 'bed_assigned', 'admitted', 'entry_appended', 'entry_appended',
+      'entry_appended', 'discharge_ready', 'discharged'
+    ];
+    const expectedAuditCounts = {
+      create_clinical_consult_request: 1,
+      transition_clinical_consult_request: 3,
+      create_ipd_admission_request: 1,
+      transition_ipd_admission: 4,
+      append_ipd_clinical_entry: 3
+    };
+    const consult = uat?.journey?.consult;
+    const expectedConsultEventDetails = [
+      {
+        eventType: 'requested', fromStatus: null, toStatus: 'requested',
+        resultingVersion: 1, actorId: uat?.journey?.actorIds?.source_practitioner
+      },
+      {
+        eventType: 'acknowledged', fromStatus: 'requested', toStatus: 'acknowledged',
+        resultingVersion: 2, actorId: uat?.journey?.actorIds?.attending
+      },
+      {
+        eventType: 'accepted', fromStatus: 'acknowledged', toStatus: 'accepted',
+        resultingVersion: 3, actorId: uat?.journey?.actorIds?.attending
+      },
+      {
+        eventType: 'completed', fromStatus: 'accepted', toStatus: 'completed',
+        resultingVersion: 4, actorId: uat?.journey?.actorIds?.attending
+      }
+    ];
+    const admission = uat?.journey?.admission;
+    const entryDetails = Array.isArray(admission?.entryDetails) ? admission.entryDetails : [];
+    const entryIds = entryDetails.map(entry => entry?.entryId);
+    const entryIdsValid = entryIds.length === 5 &&
+      entryIds.every(id => Number.isSafeInteger(Number(id)) && Number(id) > 0) &&
+      new Set(entryIds.map(String)).size === entryIds.length;
+    const expectedEntryDetails = [
+      {
+        entryId: entryIds[0], entryType: 'admission_request',
+        authorId: uat?.journey?.actorIds?.source_practitioner, admissionVersion: 1
+      },
+      {
+        entryId: entryIds[1], entryType: 'admission_note',
+        authorId: uat?.journey?.actorIds?.attending, admissionVersion: 3
+      },
+      {
+        entryId: entryIds[2], entryType: 'progress_note',
+        authorId: uat?.journey?.actorIds?.attending, admissionVersion: 4
+      },
+      {
+        entryId: entryIds[3], entryType: 'medication_reconciliation',
+        authorId: uat?.journey?.actorIds?.attending, admissionVersion: 5
+      },
+      {
+        entryId: entryIds[4], entryType: 'discharge_summary',
+        authorId: uat?.journey?.actorIds?.attending, admissionVersion: 6
+      }
+    ];
+    const eventDetails = Array.isArray(admission?.eventDetails) ? admission.eventDetails : [];
+    const eventIds = eventDetails.map(event => event?.eventId);
+    const eventIdsValid = eventIds.length === 8 &&
+      eventIds.every(id => Number.isSafeInteger(Number(id)) && Number(id) > 0) &&
+      new Set(eventIds.map(String)).size === eventIds.length;
+    const expectedEventDetails = [
+      {
+        eventId: eventIds[0], eventType: 'requested', fromStatus: null,
+        toStatus: 'requested', resultingVersion: 1,
+        actorId: uat?.journey?.actorIds?.source_practitioner, clinicalEntryId: entryIds[0]
+      },
+      {
+        eventId: eventIds[1], eventType: 'bed_assigned', fromStatus: 'requested',
+        toStatus: 'bed_assigned', resultingVersion: 2,
+        actorId: uat?.journey?.actorIds?.reception, clinicalEntryId: null
+      },
+      {
+        eventId: eventIds[2], eventType: 'admitted', fromStatus: 'bed_assigned',
+        toStatus: 'admitted', resultingVersion: 3,
+        actorId: uat?.journey?.actorIds?.attending, clinicalEntryId: entryIds[1]
+      },
+      ...[
+        [3, 2, 4], [4, 3, 5], [5, 4, 6]
+      ].map(([eventIndex, entryIndex, version]) => ({
+        eventId: eventIds[eventIndex], eventType: 'entry_appended', fromStatus: 'admitted',
+        toStatus: 'admitted', resultingVersion: version,
+        actorId: uat?.journey?.actorIds?.attending, clinicalEntryId: entryIds[entryIndex]
+      })),
+      {
+        eventId: eventIds[6], eventType: 'discharge_ready', fromStatus: 'admitted',
+        toStatus: 'discharge_ready', resultingVersion: 7,
+        actorId: uat?.journey?.actorIds?.attending, clinicalEntryId: null
+      },
+      {
+        eventId: eventIds[7], eventType: 'discharged', fromStatus: 'discharge_ready',
+        toStatus: 'discharged', resultingVersion: 8,
+        actorId: uat?.journey?.actorIds?.reception, clinicalEntryId: null
+      }
+    ];
     const started = Date.parse(uat?.startedAt);
     const completed = Date.parse(uat?.completedAt);
     const expectedRunSuffix = config.runId.slice(-8);
@@ -756,8 +933,34 @@ function assertUatEvidence(config, uat, receipt, expectedDeployId) {
       JSON.stringify(browser.writeLedger.records) !== JSON.stringify(expectedWriteRecords) ||
       !Array.isArray(browser?.writeLedger?.perContext) ||
       JSON.stringify(browser.writeLedger.perContext) !== JSON.stringify(expectedPerContext) ||
+      !UUID.test(String(consult?.id || '')) || consult?.version !== 4 ||
       uat?.journey?.consult?.status !== 'completed' ||
-      uat?.journey?.admission?.status !== 'admitted' ||
+      uat?.journey?.consult?.senderActorId !== uat?.journey?.actorIds?.source_practitioner ||
+      uat?.journey?.consult?.receiverActorId !== uat?.journey?.actorIds?.attending ||
+      uat?.journey?.consult?.wrongRole?.status !== 'DENIED' ||
+      uat?.journey?.consult?.wrongRole?.expectedError !==
+        'CONSULT_RECEIVER_MUST_DIFFER_FROM_SENDER' ||
+      uat?.journey?.consult?.wrongRole?.noMutationReadbackVerified !== true ||
+      uat?.journey?.consult?.participantDetailReadbackVerified !== true ||
+      uat?.journey?.consult?.eventTimelineReadbackVerified !== true ||
+      JSON.stringify(uat?.journey?.consult?.eventTypes) !== JSON.stringify(expectedConsultEvents) ||
+      JSON.stringify(consult?.eventDetails) !== JSON.stringify(expectedConsultEventDetails) ||
+      !UUID.test(String(admission?.id || '')) || admission?.version !== 8 ||
+      uat?.journey?.admission?.status !== 'discharged' ||
+      uat?.journey?.admission?.sourceActorId !== uat?.journey?.actorIds?.source_practitioner ||
+      uat?.journey?.admission?.attendingActorId !== uat?.journey?.actorIds?.attending ||
+      uat?.journey?.admission?.placementAndDischargeActorId !==
+        uat?.journey?.actorIds?.reception ||
+      uat?.journey?.admission?.wrongRole?.status !== 'DENIED' ||
+      uat?.journey?.admission?.wrongRole?.expectedError !== 'RECEPTION_ROLE_REQUIRED' ||
+      uat?.journey?.admission?.wrongRole?.noMutationReadbackVerified !== true ||
+      uat?.journey?.admission?.timelineReadbackVerified !== true ||
+      uat?.journey?.admission?.sourceAdmissionRequestOnlyVerified !== true ||
+      uat?.journey?.admission?.receptionClinicalEntriesAndActorIdsRedacted !== true ||
+      JSON.stringify(uat?.journey?.admission?.entryTypes) !== JSON.stringify(expectedIpdEntries) ||
+      JSON.stringify(uat?.journey?.admission?.eventTypes) !== JSON.stringify(expectedIpdEvents) ||
+      !entryIdsValid || JSON.stringify(entryDetails) !== JSON.stringify(expectedEntryDetails) ||
+      !eventIdsValid || JSON.stringify(eventDetails) !== JSON.stringify(expectedEventDetails) ||
       uat?.journey?.pharmacy?.separated !== true ||
       uat?.journey?.pharmacy?.reviewerActorId !== uat?.journey?.actorIds?.pharmacy_reviewer ||
       uat?.journey?.pharmacy?.dispenserActorId !== uat?.journey?.actorIds?.pharmacy_dispenser ||
@@ -766,11 +969,18 @@ function assertUatEvidence(config, uat, receipt, expectedDeployId) {
       uat?.journey?.billing?.actorId !== uat?.journey?.actorIds?.billing ||
       uat?.journey?.admin?.actorId !== uat?.journey?.actorIds?.admin ||
       uat?.journey?.admin?.separatelyAuthenticated !== true ||
+      uat?.journey?.admin?.auditHistoryReadbackVerified !== true ||
+      uat?.journey?.admin?.auditPhiRedacted !== true ||
+      uat?.journey?.admin?.auditClinicalPayloadRedacted !== true ||
+      uat?.journey?.admin?.auditActorAndTransitionReadbackVerified !== true ||
+      uat?.journey?.admin?.auditRowCount !== 12 ||
+      JSON.stringify(uat?.journey?.admin?.auditActionCounts) !==
+        JSON.stringify(expectedAuditCounts) ||
       uat?.mutationBudget?.limit !== config.limits.totalMutations ||
       !Number.isInteger(uat?.mutationBudget?.dispatched) ||
-      uat.mutationBudget.dispatched < 1 || uat.mutationBudget.dispatched > config.limits.totalMutations ||
+      uat.mutationBudget.dispatched !== config.limits.totalMutations ||
       uat?.mutationBudget?.writeRetries !== 0 ||
-      !Array.isArray(uat?.mutationBudget?.records) ||
+      !exactMutationLedger(uat?.mutationBudget?.records, roleKeys) ||
       uat.mutationBudget.records.length !== uat.mutationBudget.dispatched ||
       !validIsoTimestamp(uat?.startedAt) || !validIsoTimestamp(uat?.completedAt) ||
       completed < started || completed - started > config.limits.uatTimeoutMs ||

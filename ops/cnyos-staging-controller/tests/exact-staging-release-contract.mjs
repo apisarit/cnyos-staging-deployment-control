@@ -275,6 +275,7 @@ assert.equal(EXACT_STAGING_ENVIRONMENT, 'cnyos-staging-publish');
 assert.equal(EXACT_STAGING_LIMITS.authUsers, 7);
 assert.equal(EXACT_STAGING_LIMITS.syntheticCases, 1);
 assert.equal(EXACT_STAGING_LIMITS.browserOpdWrites, 2);
+assert.equal(EXACT_STAGING_LIMITS.totalMutations, 51);
 assert.equal(EXACT_STAGING_LIMITS.requestRetries, 0);
 assert.deepEqual(EXACT_STAGING_SECRET_NAMES, [
   'CNYOS_STAGING_NETLIFY_AUTH_TOKEN',
@@ -420,11 +421,24 @@ for (const role of [
 ]) assert.match(runner, new RegExp(`key: '${role}'`));
 for (const operation of [
   'book_clinic_appointment', 'check_in_clinic_appointment', 'save_ttm_opd_history',
-  'create_clinical_consult_request', 'create_ipd_admission_request',
-  'append_ipd_clinical_entry', 'create_atomic_prescription_handoff',
+  'create_clinical_consult_request', 'transition_clinical_consult_request',
+  'get_clinical_consult_request', 'create_ipd_admission_request',
+  'transition_ipd_admission', 'get_ipd_admission', 'append_ipd_clinical_entry',
+  'create_atomic_prescription_handoff',
   'transition_atomic_prescription_dispensing', 'issue_atomic_dispensing_invoice',
   'record_atomic_invoice_payment'
 ]) assert.match(runner, new RegExp(operation));
+for (const expectedContract of [
+  'expectDeniedWithoutMutation', 'CONSULT_RECEIVER_MUST_DIFFER_FROM_SENDER',
+  'RECEPTION_ROLE_REQUIRED', 'medication_reconciliation', 'discharge_summary',
+  'prepare_discharge', 'confirm_discharge', 'readAdminAuditHistory',
+  'AUDIT_METADATA_KEYS', 'CNYOS_EXACT_STAGING_ADMIN_AUDIT_PHI_LEAK',
+  'CNYOS_EXACT_STAGING_ADMIN_AUDIT_ACTOR_OR_TRANSITION_INVALID',
+  'CNYOS_EXACT_STAGING_MUTATION_COUNT_INVALID'
+]) assert.match(runner, new RegExp(expectedContract));
+assert.match(runner, /consultReadback = role => readRpc\(as\(role\), 'get_clinical_consult_request'/);
+assert.match(runner, /ipdReadback = role => readRpc\(as\(role\), 'get_ipd_admission'/);
+assert.match(runner, /budget\.records\.length !== config\.limits\.totalMutations/);
 assert.match(runner, /realPhiUsed: false/);
 assert.match(runner, /SYNTHETIC-E2E/);
 assert.match(runner, /EXACT_STAGING_SYNTHETIC_HN_PATTERN/);
@@ -718,6 +732,71 @@ const fixtureEvidence = {
   accounts, distinctAccountCount: roleKeys.length, patient: syntheticPatient,
   limits: publishConfig.limits
 };
+const mutationRecords = [];
+const addMutation = (name, authority, resource, status = 200) => {
+  mutationRecords.push({
+    ordinal: mutationRecords.length + 1, name, authority, resource,
+    dispatched: true, status, uncertain: false
+  });
+};
+for (const _role of roleKeys) {
+  addMutation('create_auth_user', 'service_role', '/auth/v1/admin/users');
+  addMutation('upsert_profile', 'service_role', '/rest/v1/profiles');
+  addMutation('insert_clinic_membership', 'service_role',
+    '/rest/v1/clinic_memberships', 201);
+}
+addMutation('upsert_product_master', 'pharmacy_reviewer',
+  '/rest/v1/rpc/upsert_product_master');
+addMutation('set_clinic_product_price', 'billing', '/rest/v1/rpc/set_clinic_product_price');
+addMutation('insert_inventory_lot', 'service_role', '/rest/v1/inventory_lots', 201);
+addMutation('upsert_patient_registration', 'reception',
+  '/rest/v1/rpc/upsert_patient_registration');
+addMutation('create_practitioner_schedule', 'reception',
+  '/rest/v1/rpc/create_practitioner_schedule');
+addMutation('book_clinic_appointment', 'reception', '/rest/v1/rpc/book_clinic_appointment');
+addMutation('check_in_clinic_appointment', 'reception',
+  '/rest/v1/rpc/check_in_clinic_appointment');
+addMutation('set_clinic_appointment_status', 'source_practitioner',
+  '/rest/v1/rpc/set_clinic_appointment_status');
+addMutation('save_ttm_opd_history', 'source_practitioner',
+  '/rest/v1/rpc/save_ttm_opd_history');
+addMutation('save_ttm_opd_history', 'source_practitioner',
+  '/rest/v1/rpc/save_ttm_opd_history');
+addMutation('create_clinical_consult_request', 'source_practitioner',
+  '/rest/v1/rpc/create_clinical_consult_request');
+addMutation('transition_clinical_consult_request', 'source_practitioner',
+  '/rest/v1/rpc/transition_clinical_consult_request', 400);
+for (let index = 0; index < 3; index += 1) {
+  addMutation('transition_clinical_consult_request', 'attending',
+    '/rest/v1/rpc/transition_clinical_consult_request');
+}
+addMutation('create_ipd_admission_request', 'source_practitioner',
+  '/rest/v1/rpc/create_ipd_admission_request');
+addMutation('transition_ipd_admission', 'source_practitioner',
+  '/rest/v1/rpc/transition_ipd_admission', 400);
+addMutation('transition_ipd_admission', 'reception', '/rest/v1/rpc/transition_ipd_admission');
+addMutation('transition_ipd_admission', 'attending', '/rest/v1/rpc/transition_ipd_admission');
+for (let index = 0; index < 3; index += 1) {
+  addMutation('append_ipd_clinical_entry', 'attending',
+    '/rest/v1/rpc/append_ipd_clinical_entry');
+}
+addMutation('transition_ipd_admission', 'attending', '/rest/v1/rpc/transition_ipd_admission');
+addMutation('transition_ipd_admission', 'reception', '/rest/v1/rpc/transition_ipd_admission');
+addMutation('create_atomic_prescription_handoff', 'source_practitioner',
+  '/rest/v1/rpc/create_atomic_prescription_handoff');
+addMutation('transition_atomic_prescription_dispensing', 'pharmacy_reviewer',
+  '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+addMutation('transition_atomic_prescription_dispensing', 'pharmacy_dispenser',
+  '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+addMutation('transition_atomic_prescription_dispensing', 'pharmacy_dispenser',
+  '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+addMutation('issue_atomic_dispensing_invoice', 'billing',
+  '/rest/v1/rpc/issue_atomic_dispensing_invoice');
+addMutation('record_atomic_invoice_payment', 'billing',
+  '/rest/v1/rpc/record_atomic_invoice_payment');
+assert.equal(mutationRecords.length, publishConfig.limits.totalMutations);
+const ipdEntryIds = [101, 102, 103, 104, 105];
+const ipdEventIds = [201, 202, 203, 204, 205, 206, 207, 208];
 const uatEvidence = {
   schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat', status: 'PASS',
   stagingOnly: true, productionAuthorized: false, controller: binding.controller,
@@ -748,16 +827,117 @@ const uatEvidence = {
         ]
       }
     },
-    consult: { status: 'completed' }, admission: { status: 'admitted' },
+    consult: {
+      id: '99999999-9999-4999-a999-999999999999',
+      status: 'completed',
+      version: 4,
+      senderActorId: actorIds.source_practitioner,
+      receiverActorId: actorIds.attending,
+      wrongRole: {
+        status: 'DENIED', expectedError: 'CONSULT_RECEIVER_MUST_DIFFER_FROM_SENDER',
+        noMutationReadbackVerified: true
+      },
+      participantDetailReadbackVerified: true,
+      eventTimelineReadbackVerified: true,
+      eventTypes: ['requested', 'acknowledged', 'accepted', 'completed'],
+      eventDetails: [
+        { eventType: 'requested', fromStatus: null, toStatus: 'requested',
+          resultingVersion: 1, actorId: actorIds.source_practitioner },
+        { eventType: 'acknowledged', fromStatus: 'requested', toStatus: 'acknowledged',
+          resultingVersion: 2, actorId: actorIds.attending },
+        { eventType: 'accepted', fromStatus: 'acknowledged', toStatus: 'accepted',
+          resultingVersion: 3, actorId: actorIds.attending },
+        { eventType: 'completed', fromStatus: 'accepted', toStatus: 'completed',
+          resultingVersion: 4, actorId: actorIds.attending }
+      ]
+    },
+    admission: {
+      id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+      status: 'discharged',
+      version: 8,
+      sourceActorId: actorIds.source_practitioner,
+      attendingActorId: actorIds.attending,
+      placementAndDischargeActorId: actorIds.reception,
+      wrongRole: {
+        status: 'DENIED', expectedError: 'RECEPTION_ROLE_REQUIRED',
+        noMutationReadbackVerified: true
+      },
+      timelineReadbackVerified: true,
+      sourceAdmissionRequestOnlyVerified: true,
+      receptionClinicalEntriesAndActorIdsRedacted: true,
+      entryTypes: [
+        'admission_request', 'admission_note', 'progress_note',
+        'medication_reconciliation', 'discharge_summary'
+      ],
+      eventTypes: [
+        'requested', 'bed_assigned', 'admitted', 'entry_appended', 'entry_appended',
+        'entry_appended', 'discharge_ready', 'discharged'
+      ],
+      entryDetails: [
+        { entryId: ipdEntryIds[0], entryType: 'admission_request',
+          authorId: actorIds.source_practitioner, admissionVersion: 1 },
+        { entryId: ipdEntryIds[1], entryType: 'admission_note',
+          authorId: actorIds.attending, admissionVersion: 3 },
+        { entryId: ipdEntryIds[2], entryType: 'progress_note',
+          authorId: actorIds.attending, admissionVersion: 4 },
+        { entryId: ipdEntryIds[3], entryType: 'medication_reconciliation',
+          authorId: actorIds.attending, admissionVersion: 5 },
+        { entryId: ipdEntryIds[4], entryType: 'discharge_summary',
+          authorId: actorIds.attending, admissionVersion: 6 }
+      ],
+      eventDetails: [
+        { eventId: ipdEventIds[0], eventType: 'requested', fromStatus: null,
+          toStatus: 'requested', resultingVersion: 1,
+          actorId: actorIds.source_practitioner, clinicalEntryId: ipdEntryIds[0] },
+        { eventId: ipdEventIds[1], eventType: 'bed_assigned', fromStatus: 'requested',
+          toStatus: 'bed_assigned', resultingVersion: 2,
+          actorId: actorIds.reception, clinicalEntryId: null },
+        { eventId: ipdEventIds[2], eventType: 'admitted', fromStatus: 'bed_assigned',
+          toStatus: 'admitted', resultingVersion: 3,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[1] },
+        { eventId: ipdEventIds[3], eventType: 'entry_appended', fromStatus: 'admitted',
+          toStatus: 'admitted', resultingVersion: 4,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[2] },
+        { eventId: ipdEventIds[4], eventType: 'entry_appended', fromStatus: 'admitted',
+          toStatus: 'admitted', resultingVersion: 5,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[3] },
+        { eventId: ipdEventIds[5], eventType: 'entry_appended', fromStatus: 'admitted',
+          toStatus: 'admitted', resultingVersion: 6,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[4] },
+        { eventId: ipdEventIds[6], eventType: 'discharge_ready', fromStatus: 'admitted',
+          toStatus: 'discharge_ready', resultingVersion: 7,
+          actorId: actorIds.attending, clinicalEntryId: null },
+        { eventId: ipdEventIds[7], eventType: 'discharged', fromStatus: 'discharge_ready',
+          toStatus: 'discharged', resultingVersion: 8,
+          actorId: actorIds.reception, clinicalEntryId: null }
+      ]
+    },
     pharmacy: {
       separated: true, reviewerActorId: actorIds.pharmacy_reviewer,
       dispenserActorId: actorIds.pharmacy_dispenser
     },
     billing: { grandTotal: 800, invoiceStatus: 'paid', actorId: actorIds.billing },
-    admin: { actorId: actorIds.admin, separatelyAuthenticated: true }
+    admin: {
+      actorId: actorIds.admin, separatelyAuthenticated: true,
+      auditHistoryReadbackVerified: true, auditPhiRedacted: true,
+      auditClinicalPayloadRedacted: true,
+      auditActorAndTransitionReadbackVerified: true,
+      auditRowCount: 12,
+      auditActionCounts: {
+        create_clinical_consult_request: 1,
+        transition_clinical_consult_request: 3,
+        create_ipd_admission_request: 1,
+        transition_ipd_admission: 4,
+        append_ipd_clinical_entry: 3
+      }
+    }
   },
-  mutationBudget: { limit: publishConfig.limits.totalMutations, dispatched: 1,
-    writeRetries: 0, records: [{ ordinal: 1 }] },
+  mutationBudget: {
+    limit: publishConfig.limits.totalMutations,
+    dispatched: publishConfig.limits.totalMutations,
+    writeRetries: 0,
+    records: mutationRecords
+  },
   startedAt: '2026-10-13T00:11:01.000Z',
   completedAt: '2026-10-13T00:11:30.000Z'
 };
@@ -852,6 +1032,62 @@ for (const mutate of [
   value => ({ ...value, journey: { ...value.journey, opdBrowserProof: {
     ...value.journey.opdBrowserProof, saveReloadAmend: false
   } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult, senderActorId: value.journey.actorIds.attending
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult, id: 'not-a-uuid'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult, version: 3
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult,
+    wrongRole: { ...value.journey.consult.wrongRole, noMutationReadbackVerified: false }
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult,
+    eventTypes: value.journey.consult.eventTypes.slice(0, -1)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult,
+    eventDetails: value.journey.consult.eventDetails.map((event, index) => index === 2
+      ? { ...event, resultingVersion: 99 } : event)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, status: 'admitted'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, id: 'not-a-uuid'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, version: 7
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    placementAndDischargeActorId: value.journey.actorIds.attending
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    wrongRole: { ...value.journey.admission.wrongRole, expectedError: 'IPD_VERSION_STALE' }
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    entryTypes: value.journey.admission.entryTypes.filter(type => type !== 'discharge_summary')
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, receptionClinicalEntriesAndActorIdsRedacted: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    entryDetails: value.journey.admission.entryDetails.map((entry, index) => index === 3
+      ? { ...entry, authorId: value.journey.actorIds.source_practitioner } : entry)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    eventDetails: value.journey.admission.eventDetails.map((event, index) => index === 4
+      ? { ...event, clinicalEntryId: value.journey.admission.entryDetails[4].entryId } : event)
+  } } }),
   value => ({ ...value, journey: { ...value.journey, pharmacy: {
     ...value.journey.pharmacy, separated: false
   } } }),
@@ -860,7 +1096,48 @@ for (const mutate of [
   } } }),
   value => ({ ...value, journey: { ...value.journey, admin: {
     ...value.journey.admin, separatelyAuthenticated: false
-  } } })
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin, auditActorAndTransitionReadbackVerified: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin, auditClinicalPayloadRedacted: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin,
+    auditActionCounts: { ...value.journey.admin.auditActionCounts,
+      transition_ipd_admission: 3 }
+  } } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    dispatched: value.mutationBudget.dispatched - 1,
+    records: value.mutationBudget.records.slice(0, -1)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 32
+      ? { ...record, status: 200 } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 37
+      ? { ...record, uncertain: true } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 45
+      ? { ...record, authority: 'billing' } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 50
+      ? { ...record, resource: '/rest/v1/rpc/wrong' } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 0
+      ? { ...record, ordinal: 2 } : record)
+  } })
 ]) {
   await expectFinalizationTamperRejected('uat-evidence.json', mutate,
     /CNYOS_EXACT_STAGING_(?:UAT_EVIDENCE|DEPLOY_RECEIPT)_INVALID/);

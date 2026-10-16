@@ -57,7 +57,7 @@ export const EXACT_STAGING_LIMITS = Object.freeze({
   authUsers: 7,
   syntheticCases: 1,
   browserOpdWrites: 2,
-  totalMutations: 48,
+  totalMutations: 51,
   requestRetries: 0,
   requestTimeoutMs: 20_000,
   uatTimeoutMs: 25 * 60_000
