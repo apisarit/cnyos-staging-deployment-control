@@ -156,6 +156,12 @@ jobs:
             PATH="${PATH:?}" \
             TMPDIR="${RUNNER_TEMP:?}" \
             npm run check
+          env -i \
+            CI=true \
+            HOME="${HOME:?}" \
+            PATH="${PATH:?}" \
+            TMPDIR="${RUNNER_TEMP:?}" \
+            node scripts/generate-staging-forward-reconciliation.mjs --check
 
       - name: Build exact connected staging artifact with publishable key only
         shell: bash
@@ -203,6 +209,47 @@ jobs:
           cp -R candidate-source/artifacts/controller-release/functions "$artifact/functions"
           cp candidate-source/artifacts/controller-release/function-input-manifest.json \
             "$artifact/function-input-manifest.json"
+          mkdir -m 700 "$artifact/database"
+          cp \
+            candidate-source/supabase/manual/20261013230000_staging_forward_reconciliation_ce4cee52.psql \
+            candidate-source/supabase/manual/20261013230000_staging_forward_reconciliation_ce4cee52.sql \
+            candidate-source/supabase/manual/20261013230000_staging_forward_reconciliation_manifest.json \
+            candidate-source/supabase/manual/20261013230000_staging_forward_reconciliation_verify.sql \
+            candidate-source/supabase/migrations/20261017005000_audit_logs_governance_admin_read.sql \
+            "$artifact/database/"
+          CNYOS_DATABASE_DIRECTORY="$artifact/database" node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          const directory = process.env.CNYOS_DATABASE_DIRECTORY;
+          const names = (await fs.readdir(directory)).sort();
+          const files = [];
+          for (const name of names) {
+            const bytes = await fs.readFile(path.join(directory, name));
+            files.push({ path: name, size: bytes.length,
+              sha256: crypto.createHash('sha256').update(bytes).digest('hex'), mode: '100644' });
+          }
+          const manifest = {
+            schemaVersion: 1, artifactType: 'cnyos-staging-database-inputs',
+            source: { requestedRef: process.env.CNYOS_EXPECTED_SOURCE_COMMIT,
+              resolvedRefObjectId: process.env.CNYOS_EXPECTED_SOURCE_COMMIT,
+              sourceTreeObjectId: process.env.CNYOS_EXPECTED_SOURCE_TREE },
+            target: { projectRef: 'hsmnjwxurlmsizndjlun',
+              systemIdentifier: '7666007964130682852' },
+            reconciliation: { legacyBundleSourceTree:
+              'ce4cee52f1ad7fed574cadf8a5e62e0f181d0d67',
+              finalAppTree: process.env.CNYOS_EXPECTED_SOURCE_TREE,
+              generatorCheckRequired: true,
+              auditMigrationIncluded: true },
+            safety: { stagingOnly: true, productionAuthorized: false,
+              resetAllowed: false, containsPatientData: false },
+            fileCount: files.length, files,
+            manifestSha256: crypto.createHash('sha256')
+              .update(Buffer.from(JSON.stringify(files))).digest('hex')
+          };
+          await fs.writeFile(path.join(path.dirname(directory), 'database-input-manifest.json'),
+            `${JSON.stringify(manifest)}\n`, { flag: 'wx', mode: 0o600 });
+          NODE
           git -C candidate-source diff --exit-code
           git -C candidate-source diff --cached --exit-code
           test "$(git -C candidate-source rev-parse HEAD)" = "$CNYOS_EXPECTED_SOURCE_COMMIT"
@@ -381,6 +428,16 @@ jobs:
         env:
           CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
         run: node scripts/prepare-exact-staging-release.mjs
+
+      - name: Reconcile and verify exact final-tree schema on fixed staging only
+        working-directory: ops/cnyos-staging-controller
+        env:
+          CNYOS_STAGING_DATABASE_URL: ${{ secrets.CNYOS_STAGING_DATABASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          command -v psql >/dev/null
+          psql --version
+          node scripts/reconcile-exact-staging-database.mjs
 
       - name: Persist intent and attempt exact publish to fixed isolated staging
         id: publish_attempt

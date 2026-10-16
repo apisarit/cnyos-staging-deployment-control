@@ -1235,7 +1235,7 @@ async function main() {
     const files = [
       'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
       'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
-      'fixture-evidence.json', 'uat-evidence.json'
+      'database-reconciliation.json', 'fixture-evidence.json', 'uat-evidence.json'
     ];
     const entries = [];
     for (const name of files) {

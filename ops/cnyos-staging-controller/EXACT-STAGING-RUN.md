@@ -44,13 +44,16 @@ reviewed application commit and tree must still match byte-for-byte. The upload
 action exposes an immutable artifact ID and transport digest; the protected job
 downloads that exact ID, re-fetches its archive with a read-only Actions token,
 and fails closed unless the raw archive SHA-256 equals the upload digest. It
-then independently proves content identity from the closed-world runtime and
-function manifests. Candidate repository scripts do not run on the protected
-runner.
+then independently proves content identity from the closed-world runtime,
+function, and database manifests. Before any site publish it applies and
+verifies the reviewed forward-only schema reconciliation and final-tree audit
+repair on the fixed staging database. Candidate repository scripts do not run
+on the protected runner.
 
 ## Protected secret names
 
 - `CNYOS_STAGING_NETLIFY_AUTH_TOKEN`
+- `CNYOS_STAGING_DATABASE_URL`
 - `CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY`
 - `CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD`
 
@@ -80,7 +83,7 @@ dispenser, billing, and administrator accounts. It proves:
 -> consult -> IPD admission/handoff -> pharmacy review -> separate dispense
 -> billing/payment`
 
-Limits are seven accounts, one case, two browser OPD writes, 48 total
+Limits are seven accounts, one case, two browser OPD writes, 51 total
 mutations, zero write retries, 20-second request timeouts, and a 25-minute UAT
 budget. Patient national ID and phone are absent. Synthetic markers are present
 on both auth metadata sets and retained evidence contains only account IDs and
@@ -95,3 +98,38 @@ candidate binding, exact deploy receipt, fixture proof, UAT proof, and evidence
 manifest. A failed or uncertain write stops without retry. The workflow does
 not auto-promote any Production environment and does not auto-rollback because
 rollback is a separate externally authorized mutation.
+
+## Database reconciliation gate
+
+The database URL must identify only Supabase project
+`hsmnjwxurlmsizndjlun`, through its direct PostgreSQL 17 endpoint or fixed
+ap-southeast-1 session pooler. The server system identifier must be
+`7666007964130682852`; Production project `qptxnrldzzinlcabudjv` is denied.
+The gate performs no reset, reads no patient rows, and does not fabricate
+migration-ledger history. Any apply, identity, policy, ACL, receipt, or verify
+failure stops before Netlify publish and UAT.
+
+The legacy five-migration bundle retains its original source-tree provenance.
+An outer input manifest binds its checked bytes and the separate audit-policy
+migration to the dispatched final app commit/tree, while build admission runs
+the bundle generator with `--check` against that exact checkout. The audit
+repair is a documented second transaction with a distinct durable receipt
+bound to the runtime app identity and audit migration SHA. Reruns must reverify
+the exact stored forward receipt before resuming or accepting the audit phase.
+Before the first forward apply, the controller performs a catalog-only marker
+probe. A clean zero-marker baseline proceeds directly. The one historically
+known ledgerless partial replay is accepted only at its exact four-marker
+state, with no reconciliation receipt; the vendored cleanup artifact
+(`d9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15`)
+must first complete inside a rolled-back preflight transaction before the same
+single-statement guarded cleanup is applied. Any other marker state, changed
+cleanup bytes, failed guard, or existing unmatched receipt fails closed. The
+probe and cleanup inspect only catalog/ledger state and never read patient
+rows, reset the database, or fabricate a migration receipt.
+There is no automatic database rollback; failure requires reviewed forward
+remediation.
+
+Current prepared identity: app commit
+`e5f78caa09cc410b95b2f14c06d1fd6aded58994`, tree
+`3d3b926f0ba11956670916daa7428fc6d3c4c48d`. These values document the current
+packet and do not authorize Production.

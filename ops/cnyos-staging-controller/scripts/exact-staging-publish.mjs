@@ -28,7 +28,8 @@ const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
 const CONTROLLER_WORKFLOW_PATH = '.github/workflows/cnyos-exact-staging-deploy-uat.yml';
 const ARTIFACT_DIGEST_KEYS = Object.freeze([
   'deployManifestSha256', 'runtimeManifestSha256',
-  'functionManifestSha256', 'functionTreeSha256'
+  'functionManifestSha256', 'functionTreeSha256',
+  'databaseManifestSha256', 'databaseTreeSha256'
 ]);
 const RECONCILIATION_RESULTS = Object.freeze({
   PASS: Object.freeze(['APPLIED_VERIFIED']),
@@ -41,7 +42,7 @@ const RECONCILIATION_RESULTS = Object.freeze({
 const EVIDENCE_MANIFEST_FILES = Object.freeze([
   'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
   'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
-  'fixture-evidence.json', 'uat-evidence.json'
+  'database-reconciliation.json', 'fixture-evidence.json', 'uat-evidence.json'
 ]);
 const UAT_ROLE_SPECS = Object.freeze({
   reception: Object.freeze(['reception', 'staff', 'reception']),
@@ -242,10 +243,14 @@ function assertCandidateBinding(config, binding, baseline) {
     !SHA256.test(String(binding?.artifact?.runtimeManifestSha256 || '')) ||
     !SHA256.test(String(binding?.artifact?.functionManifestSha256 || '')) ||
     !SHA256.test(String(binding?.artifact?.functionTreeSha256 || '')) ||
+    !SHA256.test(String(binding?.artifact?.databaseManifestSha256 || '')) ||
+    !SHA256.test(String(binding?.artifact?.databaseTreeSha256 || '')) ||
     !Number.isSafeInteger(binding?.artifact?.runtimeFileCount) ||
     binding.artifact.runtimeFileCount < 1 || binding.artifact.runtimeFileCount > 100_000 ||
     !Number.isSafeInteger(binding?.artifact?.functionFileCount) ||
     binding.artifact.functionFileCount < 1 || binding.artifact.functionFileCount > 100_000 ||
+    !Number.isSafeInteger(binding?.artifact?.databaseFileCount) ||
+    binding.artifact.databaseFileCount !== 5 ||
     JSON.stringify(observedFunctionNames) !== JSON.stringify(expectedFunctionNames) ||
     binding?.functionEnvironment?.exactValuesSha256 !== expectedFunctionValuesSha256 ||
     binding?.functionEnvironment?.productionDenylistConfirmed !== true ||
@@ -328,7 +333,9 @@ export function createExactStagingPublishIntent(config, binding, baseline, {
       deployManifestSha256: binding.artifact.deployManifestSha256,
       runtimeManifestSha256: binding.artifact.runtimeManifestSha256,
       functionManifestSha256: binding.artifact.functionManifestSha256,
-      functionTreeSha256: binding.artifact.functionTreeSha256
+      functionTreeSha256: binding.artifact.functionTreeSha256,
+      databaseManifestSha256: binding.artifact.databaseManifestSha256,
+      databaseTreeSha256: binding.artifact.databaseTreeSha256
     }),
     rollbackBaselineDeployId: config.rollbackDeployId,
     operation: Object.freeze({
@@ -1058,10 +1065,138 @@ function assertEvidenceManifest(config, manifest, files, expectedDeployId) {
   }
 }
 
+function validDatabaseCommandEvidence(value, requireSuccess = true) {
+  const outcomeValid = requireSuccess
+    ? value?.exitCode === 0 && value?.signal === null
+    : (Number.isSafeInteger(value?.exitCode) || value?.exitCode === null) &&
+      (value?.signal === null || (typeof value?.signal === 'string' &&
+        /^[A-Za-z0-9_-]{1,32}$/.test(value.signal)));
+  return plainObject(value) && outcomeValid &&
+    Number.isInteger(value.stdoutBytes) && value.stdoutBytes >= 0 &&
+    Number.isInteger(value.stderrBytes) && value.stderrBytes >= 0 &&
+    (value.stdoutBytes === 0 ? value.stdoutSha256 === null :
+      SHA256.test(String(value.stdoutSha256 || ''))) &&
+    (value.stderrBytes === 0 ? value.stderrSha256 === null :
+      SHA256.test(String(value.stderrSha256 || '')));
+}
+
+function assertDatabaseReconciliationEvidence(config, database, binding) {
+  const passPhaseSets = {
+    APPLIED_VERIFIED: [
+      ['receiptProbe', 'cleanupProbe', 'forwardApply', 'forwardVerify',
+        'auditApply', 'auditReceipt', 'auditVerify'],
+      ['receiptProbe', 'cleanupProbe', 'cleanupPreflight', 'cleanupApply',
+        'forwardApply', 'forwardVerify', 'auditApply', 'auditReceipt', 'auditVerify']
+    ],
+    RESUMED_AUDIT_APPLIED_VERIFIED: [[
+      'receiptProbe', 'priorForwardReceipt', 'priorForwardVerify', 'priorAuditReceipt',
+      'auditApply', 'auditReceipt', 'auditVerify'
+    ]],
+    PRIOR_APPLIED_VERIFIED: [[
+      'receiptProbe', 'priorForwardReceipt', 'priorForwardVerify',
+      'priorAuditReceipt', 'priorAuditVerify'
+    ]]
+  };
+  const failureTerminalPhase = {
+    CNYOS_EXACT_STAGING_DATABASE_IDENTITY_PROBE_FAILED: 'receiptProbe',
+    CNYOS_EXACT_STAGING_DATABASE_RECEIPT_PROBE_INVALID: 'receiptProbe',
+    CNYOS_EXACT_STAGING_DATABASE_PRIOR_RECEIPT_VERIFY_FAILED: 'priorForwardReceipt',
+    CNYOS_EXACT_STAGING_DATABASE_FOREIGN_RECEIPT_STATE: 'priorForwardReceipt',
+    CNYOS_EXACT_STAGING_DATABASE_PRIOR_RECEIPT_INVALID: 'priorForwardReceipt',
+    CNYOS_EXACT_STAGING_DATABASE_PRIOR_FORWARD_VERIFY_FAILED: 'priorForwardVerify',
+    CNYOS_EXACT_STAGING_DATABASE_PRIOR_AUDIT_RECEIPT_VERIFY_FAILED: 'priorAuditReceipt',
+    CNYOS_EXACT_STAGING_DATABASE_PRIOR_AUDIT_RECEIPT_INVALID: 'priorAuditReceipt',
+    CNYOS_EXACT_STAGING_DATABASE_PRIOR_AUDIT_VERIFY_FAILED: 'priorAuditVerify',
+    CNYOS_EXACT_STAGING_CLEANUP_PROBE_FAILED: 'cleanupProbe',
+    CNYOS_EXACT_STAGING_CLEANUP_UNKNOWN_DRIFT: 'cleanupProbe',
+    CNYOS_EXACT_STAGING_CLEANUP_PREFLIGHT_FAILED: 'cleanupPreflight',
+    CNYOS_EXACT_STAGING_CLEANUP_APPLY_FAILED: 'cleanupApply',
+    CNYOS_EXACT_STAGING_DATABASE_FORWARD_APPLY_FAILED: 'forwardApply',
+    CNYOS_EXACT_STAGING_DATABASE_FORWARD_VERIFY_FAILED: 'forwardVerify',
+    CNYOS_EXACT_STAGING_DATABASE_AUDIT_APPLY_FAILED: 'auditApply',
+    CNYOS_EXACT_STAGING_DATABASE_AUDIT_RECEIPT_FAILED: 'auditReceipt',
+    CNYOS_EXACT_STAGING_DATABASE_AUDIT_VERIFY_FAILED: 'auditVerify'
+  };
+  const phasePaths = [
+    ...Object.values(passPhaseSets).flat()
+  ];
+  const phaseNames = plainObject(database?.phases) ? Object.keys(database.phases) : [];
+  const expectedPassPhaseSets = passPhaseSets[database?.result] || [];
+  const passShape = database?.status === 'PASS' &&
+    expectedPassPhaseSets.some(expected =>
+      JSON.stringify(phaseNames) === JSON.stringify(expected)) &&
+    phaseNames.every(name => validDatabaseCommandEvidence(database.phases[name]));
+  const failurePhase = failureTerminalPhase[database?.result];
+  const failureCommandOutcomeValid = !String(database?.result || '').endsWith('_FAILED') ||
+    (failurePhase && !validDatabaseCommandEvidence(database?.phases?.[failurePhase]));
+  const failurePrefix = database?.status === 'FAIL' &&
+    /^CNYOS_[A-Z0-9_]+$/.test(String(database?.result || '')) &&
+    (phaseNames.length === 0 || phasePaths.some(candidate =>
+      phaseNames.every((name, index) => candidate[index] === name))) &&
+    phaseNames.every(name => validDatabaseCommandEvidence(database.phases[name], false)) &&
+    (!failurePhase || phaseNames.at(-1) === failurePhase) && failureCommandOutcomeValid;
+  if (database?.schemaVersion !== 1 ||
+    database?.kind !== 'cnyos_exact_staging_database_reconciliation' ||
+    (!passShape && !failurePrefix) ||
+    database?.stagingOnly !== true || database?.productionAuthorized !== false ||
+    database?.resetAttempted !== false || database?.historicalLedgerReplayed !== false ||
+    database?.realPatientDataRead !== false ||
+    database?.automaticRollbackAttempted !== false ||
+    database?.forwardRemediationRequiredOnFailure !== true ||
+    database?.nonAtomicPhaseBoundary !== true ||
+    !exactControllerBinding(config, {
+      repository: CONTROLLER_REPOSITORY, commit: database?.controller?.commit,
+      workflowPath: CONTROLLER_WORKFLOW_PATH
+    }) || !exactSourceBinding(config, database?.source) ||
+    database?.target?.projectRef !== EXACT_STAGING_TARGET.supabaseProjectRef ||
+    database?.target?.systemIdentifier !== '7666007964130682852' ||
+    database?.target?.database !== 'postgres' ||
+    database?.artifact?.databaseManifestSha256 !==
+      binding?.artifact?.databaseManifestSha256 ||
+    database?.artifact?.databaseTreeSha256 !== binding?.artifact?.databaseTreeSha256 ||
+    !SHA256.test(String(database?.artifact?.reconciliationArtifactSha256 || '')) ||
+    !SHA256.test(String(database?.artifact?.auditMigrationSha256 || '')) ||
+    database?.artifact?.cleanupArtifactSha256 !==
+      'd9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15' ||
+    !UUID.test(String(database?.attemptId || '')) ||
+    !UUID.test(String(database?.forwardAttemptId || '')) ||
+    !UUID.test(String(database?.auditAttemptId || '')) ||
+    database?.attemptId !== database?.forwardAttemptId ||
+    database?.forwardAttemptId === database?.auditAttemptId ||
+    !validIsoTimestamp(database?.startedAt) || !validIsoTimestamp(database?.completedAt) ||
+    Date.parse(database.completedAt) < Date.parse(database.startedAt)) {
+    fail('CNYOS_EXACT_STAGING_DATABASE_RECONCILIATION_INVALID');
+  }
+}
+
+async function observeEvidenceSet(config, expected) {
+  const actual = (await fs.readdir(config.uploadDirectory))
+    .filter(name => name !== 'terminal-evidence.json').sort();
+  let valid = JSON.stringify(actual) === JSON.stringify(expected);
+  const entries = [];
+  const observedFiles = new Map();
+  for (const name of actual) {
+    const filename = path.join(config.uploadDirectory, name);
+    const stat = await fs.lstat(filename);
+    let jsonValid = false;
+    let bytes = Buffer.alloc(0);
+    if (stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o777) === 0o600) {
+      bytes = await fs.readFile(filename);
+      try { jsonValid = plainObject(JSON.parse(bytes.toString('utf8'))); }
+      catch { jsonValid = false; }
+    }
+    if (!jsonValid) valid = false;
+    const entry = { name, size: bytes.length, sha256: sha256(bytes), jsonValid };
+    entries.push(entry);
+    observedFiles.set(name, entry);
+  }
+  return { actual, valid, entries, observedFiles };
+}
+
 function expectedEvidenceNames(reconciliation, uat) {
   const base = [
     'candidate-binding.json', 'publish-attempt.json', 'publish-intent.json',
-    'publish-reconciliation.json', 'rollback-baseline.json'
+    'publish-reconciliation.json', 'rollback-baseline.json', 'database-reconciliation.json'
   ];
   if (reconciliation.status !== 'PASS') return base.sort();
   const withUat = [...base, 'deploy-receipt.json', 'uat-evidence.json'];
@@ -1084,6 +1219,43 @@ export async function finalizeExactStagingEvidence(config, { now = () => new Dat
     'CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
   const baselineFile = await readJson(path.join(config.uploadDirectory, 'rollback-baseline.json'),
     'CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
+  assertCandidateBinding(config, bindingFile.value, baselineFile.value);
+  const databaseFile = await readJson(
+    path.join(config.uploadDirectory, 'database-reconciliation.json'),
+    'CNYOS_EXACT_STAGING_DATABASE_RECONCILIATION_INVALID');
+  const database = databaseFile.value;
+  assertDatabaseReconciliationEvidence(config, database, bindingFile.value);
+  if (database.status !== 'PASS') {
+    const expected = [
+      'candidate-binding.json', 'database-reconciliation.json', 'rollback-baseline.json'
+    ].sort();
+    const observed = await observeEvidenceSet(config, expected);
+    const terminal = {
+      schemaVersion: 1,
+      kind: 'cnyos_exact_staging_terminal_evidence',
+      status: 'FAIL',
+      stagingOnly: true,
+      productionAuthorized: false,
+      controller: bindingFile.value.controller,
+      source: { commit: config.appCommit, tree: config.appTree },
+      target: { siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin },
+      publishReconciliation: {
+        status: 'NOT_RUN', result: 'DATABASE_RECONCILIATION_FAILED', deployId: null
+      },
+      databaseReconciliation: { status: database.status, result: database.result,
+        attemptId: database.attemptId },
+      uatStatus: 'NOT_RUN',
+      evidenceSetValid: observed.valid,
+      expectedEvidenceNames: expected,
+      evidence: observed.entries,
+      automaticRollbackAuthorized: false,
+      automaticRollbackAttempted: false,
+      completedAt: now()
+    };
+    assertSecretFreeEvidence(terminal);
+    await writeFresh0600(path.join(config.uploadDirectory, 'terminal-evidence.json'), terminal);
+    return terminal;
+  }
   const intentFile = await readJson(path.join(config.uploadDirectory, 'publish-intent.json'),
     'CNYOS_EXACT_STAGING_PUBLISH_INTENT_INVALID');
   const attemptFile = await readJson(path.join(config.uploadDirectory, 'publish-attempt.json'),
@@ -1118,27 +1290,9 @@ export async function finalizeExactStagingEvidence(config, { now = () => new Dat
     }
   }
   const expected = expectedEvidenceNames(reconciliation, uat);
-  const actual = (await fs.readdir(config.uploadDirectory))
-    .filter(name => name !== 'terminal-evidence.json').sort();
-  let evidenceSetValid = JSON.stringify(actual) === JSON.stringify(expected);
-  const entries = [];
-  const observedFiles = new Map();
-  for (const name of actual) {
-    const filename = path.join(config.uploadDirectory, name);
-    const stat = await fs.lstat(filename);
-    let jsonValid = false;
-    let bytes = Buffer.alloc(0);
-    if (stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o777) === 0o600) {
-      bytes = await fs.readFile(filename);
-      try { jsonValid = plainObject(JSON.parse(bytes.toString('utf8'))); }
-      catch { jsonValid = false; }
-    }
-    if (!jsonValid) evidenceSetValid = false;
-    const entry = { name, size: bytes.length, sha256: sha256(bytes), jsonValid };
-    entries.push(entry);
-    observedFiles.set(name, entry);
-  }
-  if (manifest) assertEvidenceManifest(config, manifest, observedFiles, reconciledDeployId);
+  const observed = await observeEvidenceSet(config, expected);
+  let evidenceSetValid = observed.valid;
+  if (manifest) assertEvidenceManifest(config, manifest, observed.observedFiles, reconciledDeployId);
   const status = deriveExactStagingTerminalStatus(reconciliation.status, uat?.status || null,
     evidenceSetValid);
   const terminal = {
@@ -1155,10 +1309,12 @@ export async function finalizeExactStagingEvidence(config, { now = () => new Dat
       result: reconciliation.result,
       deployId: reconciliation.normalizedDeployId || null
     },
+    databaseReconciliation: { status: database.status, result: database.result,
+      attemptId: database.attemptId },
     uatStatus: uat?.status || 'NOT_RUN',
     evidenceSetValid,
     expectedEvidenceNames: expected,
-    evidence: entries,
+    evidence: observed.entries,
     automaticRollbackAuthorized: false,
     automaticRollbackAttempted: false,
     completedAt: now()

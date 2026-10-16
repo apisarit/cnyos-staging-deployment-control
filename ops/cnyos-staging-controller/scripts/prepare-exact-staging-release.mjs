@@ -54,5 +54,7 @@ await writeFresh0600(path.join(config.privateDirectory, 'artifact-verification.j
   ...binding,
   deployManifest: verified.deployManifest,
   runtimeManifest: verified.runtimeManifest,
-  functionManifest: verified.functionManifest
+  functionManifest: verified.functionManifest,
+  databaseManifest: verified.databaseManifest,
+  databaseReconciliationManifest: verified.reconciliationManifest
 }, secrets);

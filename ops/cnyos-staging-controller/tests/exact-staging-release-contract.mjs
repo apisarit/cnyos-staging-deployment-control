@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   EXACT_STAGING_ENVIRONMENT,
+  EXACT_STAGING_DATABASE_FILES,
   EXACT_STAGING_FUNCTION_ENVIRONMENT,
   EXACT_STAGING_LIMITS,
   EXACT_STAGING_PRODUCTION_DENYLIST,
@@ -34,6 +35,10 @@ import {
   finalizeExactStagingEvidence,
   reconcileExactStagingPublish
 } from '../scripts/exact-staging-publish.mjs';
+import {
+  parseExactStagingDatabaseUrl,
+  reconcileExactStagingDatabase
+} from '../scripts/reconcile-exact-staging-database.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(packageRoot, '..', '..');
@@ -46,13 +51,19 @@ const runner = await fs.readFile(path.join(packageRoot,
   'scripts/run-exact-staging-clinical-uat.mjs'), 'utf8');
 const publisher = await fs.readFile(path.join(packageRoot,
   'scripts/exact-staging-publish.mjs'), 'utf8');
+const cleanupArtifact = await fs.readFile(path.join(packageRoot, 'sql',
+  'cnyos-staging-partial-backup-replay-cleanup.sql'));
+assert.equal(sha256(cleanupArtifact),
+  'd9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cnyos-exact-staging-contract-'));
 const artifact = path.join(root, 'artifact');
 const dist = path.join(artifact, 'dist');
 const functions = path.join(artifact, 'functions');
+const database = path.join(artifact, 'database');
 const work = path.join(root, 'work');
 await fs.mkdir(dist, { recursive: true });
 await fs.mkdir(functions, { recursive: true });
+await fs.mkdir(database, { recursive: true });
 
 const controllerCommit = '9'.repeat(40);
 const commit = 'a'.repeat(40);
@@ -117,6 +128,54 @@ const functionManifest = {
 await fs.writeFile(path.join(artifact, 'function-input-manifest.json'),
   `${JSON.stringify(functionManifest)}\n`);
 
+const databaseText = new Map([
+  ['20261013230000_staging_forward_reconciliation_ce4cee52.sql', 'begin; commit;\n'],
+  ['20261013230000_staging_forward_reconciliation_ce4cee52.psql', '\\ir 20261013230000_staging_forward_reconciliation_ce4cee52.sql\n'],
+  ['20261013230000_staging_forward_reconciliation_verify.sql', 'select 1;\n'],
+  ['20261017005000_audit_logs_governance_admin_read.sql', 'begin; commit;\n']
+]);
+const databaseHash = value => sha256(Buffer.from(value));
+const reconciliationManifest = {
+  version: '20261013230000', schemaVersion: 'synthetic', sourceTree: 'f'.repeat(40),
+  stagingProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+  productionProjectRef: 'qptxnrldzzinlcabudjv',
+  expectedSystemIdentifier: '7666007964130682852',
+  artifact: '20261013230000_staging_forward_reconciliation_ce4cee52.sql',
+  artifactSha256: databaseHash(databaseText.get(
+    '20261013230000_staging_forward_reconciliation_ce4cee52.sql')),
+  wrapper: '20261013230000_staging_forward_reconciliation_ce4cee52.psql',
+  wrapperSha256: databaseHash(databaseText.get(
+    '20261013230000_staging_forward_reconciliation_ce4cee52.psql')),
+  verifier: '20261013230000_staging_forward_reconciliation_verify.sql',
+  verifierSha256: databaseHash(databaseText.get(
+    '20261013230000_staging_forward_reconciliation_verify.sql')),
+  executeSqlExplicitTransactionRollbackProven: true,
+  historicalLedgerReplayed: false
+};
+databaseText.set('20261013230000_staging_forward_reconciliation_manifest.json',
+  `${JSON.stringify(reconciliationManifest)}\n`);
+for (const [name, value] of databaseText) await fs.writeFile(path.join(database, name), value);
+const databaseEntries = [];
+for (const name of [...EXACT_STAGING_DATABASE_FILES].sort()) {
+  const bytes = await fs.readFile(path.join(database, name));
+  databaseEntries.push({ path: name, size: bytes.length, sha256: sha256(bytes), mode: '100644' });
+}
+const databaseManifest = {
+  schemaVersion: 1, artifactType: 'cnyos-staging-database-inputs',
+  source: { requestedRef: commit, resolvedRefObjectId: commit, sourceTreeObjectId: tree },
+  target: { projectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    systemIdentifier: '7666007964130682852' },
+  reconciliation: { legacyBundleSourceTree:
+    'ce4cee52f1ad7fed574cadf8a5e62e0f181d0d67', finalAppTree: tree,
+    generatorCheckRequired: true, auditMigrationIncluded: true },
+  safety: { stagingOnly: true, productionAuthorized: false,
+    resetAllowed: false, containsPatientData: false },
+  fileCount: databaseEntries.length, files: databaseEntries,
+  manifestSha256: sha256(Buffer.from(JSON.stringify(databaseEntries)))
+};
+await fs.writeFile(path.join(artifact, 'database-input-manifest.json'),
+  `${JSON.stringify(databaseManifest)}\n`);
+
 const config = loadExactStagingConfig({
   CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
   CNYOS_EXPECTED_SOURCE_COMMIT: commit,
@@ -131,6 +190,147 @@ assert.equal(verified.artifact.source.commit, commit);
 assert.equal(verified.artifact.source.tree, tree);
 assert.equal(verified.artifact.runtimeFileCount, runtimeNames.length);
 assert.equal(verified.artifact.functionFileCount, 1);
+assert.equal(verified.artifact.databaseFileCount, 5);
+
+const directDatabaseUrl =
+  'postgresql://postgres:synthetic-secret@db.hsmnjwxurlmsizndjlun.supabase.co:5432/postgres?sslmode=require';
+assert.equal(parseExactStagingDatabaseUrl(directDatabaseUrl).PGHOST,
+  'db.hsmnjwxurlmsizndjlun.supabase.co');
+assert.equal(parseExactStagingDatabaseUrl(
+  'postgresql://postgres.hsmnjwxurlmsizndjlun:synthetic-secret@' +
+  'aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require').PGUSER,
+'postgres.hsmnjwxurlmsizndjlun');
+for (const invalidUrl of [
+  directDatabaseUrl.replace('hsmnjwxurlmsizndjlun', 'qptxnrldzzinlcabudjv'),
+  directDatabaseUrl.replace(':5432', ':6543'),
+  directDatabaseUrl.replace('db.hsmnjwxurlmsizndjlun.supabase.co', 'example.com'),
+  directDatabaseUrl.replace('postgres:', 'service_role:')
+]) assert.throws(() => parseExactStagingDatabaseUrl(invalidUrl),
+  /CNYOS_EXACT_STAGING_DATABASE_URL_INVALID/);
+
+const databaseRunnerConfig = suffix => loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
+  CNYOS_EXPECTED_SOURCE_COMMIT: commit,
+  CNYOS_EXPECTED_SOURCE_TREE: tree,
+  CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
+  CNYOS_STAGING_RUN_REFERENCE: `exact-staging-db-${suffix}-20261017`,
+  CNYOS_STAGING_ARTIFACT_DIRECTORY: artifact,
+  CNYOS_EXACT_STAGING_WORK_DIRECTORY: path.join(root, `database-work-${suffix}`)
+});
+const forwardAttemptId = '11111111-1111-4111-a111-111111111111';
+const auditAttemptId = '22222222-2222-4222-a222-222222222222';
+const psqlResult = stdout => ({ status: 0, signal: null,
+  stdout: Buffer.from(stdout), stderr: Buffer.alloc(0) });
+const runDatabaseScenario = async (suffix, outputs) => {
+  const runnerConfig = databaseRunnerConfig(suffix);
+  await fs.mkdir(runnerConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+  let index = 0;
+  const calls = [];
+  const evidence = await reconcileExactStagingDatabase(runnerConfig, directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    now: () => index === 0 ? '2026-10-17T00:00:00.000Z' :
+      '2026-10-17T00:01:00.000Z',
+    spawnImpl: (command, args, options) => {
+      calls.push({ command, args, options });
+      assert.doesNotMatch(JSON.stringify(args), /synthetic-secret/);
+      return outputs[index++];
+    }
+  });
+  const serialized = await fs.readFile(path.join(runnerConfig.uploadDirectory,
+    'database-reconciliation.json'), 'utf8');
+  assert.doesNotMatch(serialized, /synthetic-secret|postgresql:\/\//);
+  return { evidence, calls };
+};
+const freshDatabase = await runDatabaseScenario('fresh', [
+  psqlResult('false\n'), psqlResult('0\n'), psqlResult(''), psqlResult(''),
+  psqlResult(''), psqlResult(''), psqlResult('')
+]);
+assert.equal(freshDatabase.evidence.result, 'APPLIED_VERIFIED');
+assert.equal(freshDatabase.calls.length, 7);
+for (const policyCheckCall of [freshDatabase.calls[5], freshDatabase.calls[6]]) {
+  const policySql = policyCheckCall.args.join('\n');
+  assert.match(policySql,
+    /count\(\*\).*public\.audit_logs.*<> 3[\s\S]*audit_logs_tenant_boundary[\s\S]*cnyos_active_subscription_boundary[\s\S]*audit_read_governance_admin/s);
+  assert.doesNotMatch(policySql, /audit_role_history_read_governance/);
+  assert.match(policySql, /CNYOS_AUDIT_VERIFY_POLICY_INVENTORY_INVALID/);
+  assert.match(policySql,
+    /\$tenant\$\(\(clinic_id IS NOT NULL\) AND is_clinic_member\(clinic_id\)\)\$tenant\$/);
+  assert.match(policySql,
+    /\$subscription\$\(current_clinic_id\(\) IS NOT NULL\)\$subscription\$/);
+  assert.match(policySql,
+    /\$governance\$\(\(\( SELECT current_user_role\(\) AS current_user_role\)/);
+  assert.match(policySql,
+    /digest\(convert_to\(string_agg\(line,E'\\n' order by line\),'UTF8'\),[\s\S]*'sha256'/);
+  assert.match(policySql, /ACL_EFFECTIVE[\s\S]*authenticated[\s\S]*SELECT[\s\S]*INSERT/);
+}
+const auditReceiptSqlText = freshDatabase.calls[5].args.join('\n');
+assert.match(auditReceiptSqlText,
+  /artifact_sha256,catalog_fingerprint[\s\S]*v_audit_surface_fingerprint/);
+assert.doesNotMatch(auditReceiptSqlText,
+  /'[^']*',catalog_fingerprint,schema_version,session_user/);
+const auditVerifySqlText = freshDatabase.calls[6].args.join('\n');
+assert.match(auditVerifySqlText,
+  new RegExp(`attempt_id='${auditAttemptId}'::uuid[\\s\\S]*` +
+    'catalog_fingerprint=v_audit_surface_fingerprint'));
+const cleanedDatabase = await runDatabaseScenario('cleanup', [
+  psqlResult('false\n'), psqlResult('4\n'), psqlResult(''), psqlResult(''),
+  psqlResult(''), psqlResult(''), psqlResult(''), psqlResult(''), psqlResult('')
+]);
+assert.equal(cleanedDatabase.evidence.result, 'APPLIED_VERIFIED');
+assert.deepEqual(Object.keys(cleanedDatabase.evidence.phases), [
+  'receiptProbe', 'cleanupProbe', 'cleanupPreflight', 'cleanupApply',
+  'forwardApply', 'forwardVerify', 'auditApply', 'auditReceipt', 'auditVerify'
+]);
+const priorDatabase = await runDatabaseScenario('prior', [
+  psqlResult('true\n'), psqlResult(`${forwardAttemptId}\n`),
+  psqlResult(''), psqlResult(`${auditAttemptId}\n`), psqlResult('')
+]);
+assert.equal(priorDatabase.evidence.result, 'PRIOR_APPLIED_VERIFIED');
+assert.equal(priorDatabase.evidence.auditAttemptId, auditAttemptId);
+assert.equal(priorDatabase.calls.length, 5);
+const resumedDatabase = await runDatabaseScenario('resumed', [
+  psqlResult('true\n'), psqlResult(`${forwardAttemptId}\n`), psqlResult(''),
+  psqlResult('\n'), psqlResult(''), psqlResult(''), psqlResult('')
+]);
+assert.equal(resumedDatabase.evidence.result, 'RESUMED_AUDIT_APPLIED_VERIFIED');
+assert.equal(resumedDatabase.calls.length, 7);
+
+const unknownDriftConfig = databaseRunnerConfig('unknown-drift');
+await fs.mkdir(unknownDriftConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+let unknownDriftCall = 0;
+await assert.rejects(() => reconcileExactStagingDatabase(unknownDriftConfig,
+  directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    spawnImpl: () => [psqlResult('false\n'), psqlResult('2\n')][unknownDriftCall++]
+  }), /CNYOS_EXACT_STAGING_CLEANUP_UNKNOWN_DRIFT/);
+assert.equal(unknownDriftCall, 2);
+
+const priorAuditDriftConfig = databaseRunnerConfig('prior-audit-drift');
+await fs.mkdir(priorAuditDriftConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+let priorAuditDriftCall = 0;
+const priorAuditDriftOutputs = [
+  psqlResult('true\n'), psqlResult(`${forwardAttemptId}\n`), psqlResult(''),
+  psqlResult(`${auditAttemptId}\n`),
+  { status: 1, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.from('drift') }
+];
+await assert.rejects(() => reconcileExactStagingDatabase(priorAuditDriftConfig,
+  directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    spawnImpl: () => priorAuditDriftOutputs[priorAuditDriftCall++]
+  }), /CNYOS_EXACT_STAGING_DATABASE_PRIOR_AUDIT_VERIFY_FAILED/);
+assert.equal(priorAuditDriftCall, 5);
+
+const failedRunnerConfig = databaseRunnerConfig('failed');
+await fs.mkdir(failedRunnerConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+let failedCall = 0;
+await assert.rejects(() => reconcileExactStagingDatabase(failedRunnerConfig,
+  directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    spawnImpl: () => failedCall++ === 0 ? psqlResult('false\n') :
+      failedCall === 2 ? psqlResult('0\n') :
+        ({ status: 1, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.from('failed') })
+  }), /CNYOS_EXACT_STAGING_DATABASE_FORWARD_APPLY_FAILED/);
+assert.equal(failedCall, 3);
 
 const receipt = parseNetlifyDeployReceipt({
   deploy_id: 'f'.repeat(24),
@@ -279,6 +479,7 @@ assert.equal(EXACT_STAGING_LIMITS.totalMutations, 51);
 assert.equal(EXACT_STAGING_LIMITS.requestRetries, 0);
 assert.deepEqual(EXACT_STAGING_SECRET_NAMES, [
   'CNYOS_STAGING_NETLIFY_AUTH_TOKEN',
+  'CNYOS_STAGING_DATABASE_URL',
   'CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY',
   'CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD'
 ]);
@@ -347,10 +548,18 @@ assert.match(buildJob, /if-no-files-found: error/);
 assert.match(buildJob, /include-hidden-files: false/);
 assert.match(buildJob, /overwrite: false/);
 assert.match(buildJob, /retention-days: 1/);
+assert.match(buildJob, /20261013230000_staging_forward_reconciliation_ce4cee52\.sql/);
+assert.match(buildJob, /20261017005000_audit_logs_governance_admin_read\.sql/);
+assert.match(buildJob, /database-input-manifest\.json/);
 
 assert.match(protectedJob,
   /^    needs:\n      - admit-controller-runtime\n      - build_candidate_artifact$/m);
 assert.match(protectedJob, /environment:\n\s+name: cnyos-staging-publish/);
+assert.match(protectedJob, /reconcile-exact-staging-database\.mjs/);
+assert.match(protectedJob,
+  /CNYOS_STAGING_DATABASE_URL: \$\{\{ secrets\.CNYOS_STAGING_DATABASE_URL \}\}/);
+assert.ok(protectedJob.indexOf('reconcile-exact-staging-database.mjs') <
+  protectedJob.indexOf('exact-staging-publish.mjs attempt'));
 assert.doesNotMatch(protectedJob, /repository: apisarit\/chananya-clinical-wellness-os/);
 assert.doesNotMatch(protectedJob, /candidate-source/);
 assert.doesNotMatch(protectedJob, /CNYOS_APP_SOURCE_READ_TOKEN/);
@@ -521,7 +730,8 @@ assert.throws(() => createExactStagingPublishIntent(config, {
 }, baseline), /CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
 for (const artifactKey of [
   'deployManifestSha256', 'runtimeManifestSha256',
-  'functionManifestSha256', 'functionTreeSha256'
+  'functionManifestSha256', 'functionTreeSha256',
+  'databaseManifestSha256', 'databaseTreeSha256'
 ]) {
   assert.throws(() => createExactStagingPublishIntent(config, {
     ...binding, artifact: { ...binding.artifact, [artifactKey]: 'not-a-sha256' }
@@ -965,10 +1175,73 @@ const uatEvidence = {
 };
 await overwriteEvidence('fixture-evidence.json', fixtureEvidence);
 await overwriteEvidence('uat-evidence.json', uatEvidence);
+const databasePhase = {
+  exitCode: 0, signal: null, stdoutBytes: 0, stdoutSha256: null,
+  stderrBytes: 0, stderrSha256: null
+};
+const databaseEvidence = {
+  schemaVersion: 1, kind: 'cnyos_exact_staging_database_reconciliation',
+  status: 'PASS', result: 'APPLIED_VERIFIED', stagingOnly: true,
+  productionAuthorized: false, resetAttempted: false,
+  historicalLedgerReplayed: false, realPatientDataRead: false,
+  automaticRollbackAttempted: false, forwardRemediationRequiredOnFailure: true,
+  nonAtomicPhaseBoundary: true, controller: { commit: controllerCommit },
+  source: { commit, tree }, target: {
+    projectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    systemIdentifier: '7666007964130682852', database: 'postgres'
+  },
+  artifact: {
+    databaseManifestSha256: verified.artifact.databaseManifestSha256,
+    databaseTreeSha256: verified.artifact.databaseTreeSha256,
+    reconciliationArtifactSha256: '6'.repeat(64), auditMigrationSha256: '7'.repeat(64),
+    cleanupArtifactSha256:
+      'd9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15'
+  },
+  attemptId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+  forwardAttemptId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+  auditAttemptId: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',
+  phases: Object.fromEntries([
+    'receiptProbe', 'cleanupProbe', 'forwardApply', 'forwardVerify',
+    'auditApply', 'auditReceipt', 'auditVerify'
+  ].map(name => [name, databasePhase])),
+  startedAt: '2026-10-13T00:00:31.000Z', completedAt: '2026-10-13T00:00:59.000Z'
+};
+
+const failureFinalizerConfig = loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
+  CNYOS_EXPECTED_SOURCE_COMMIT: commit,
+  CNYOS_EXPECTED_SOURCE_TREE: tree,
+  CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
+  CNYOS_STAGING_RUN_REFERENCE: 'exact-staging-db-terminal-failure-20261017',
+  CNYOS_STAGING_ARTIFACT_DIRECTORY: artifact,
+  CNYOS_EXACT_STAGING_WORK_DIRECTORY: path.join(root, 'database-terminal-failure')
+});
+await fs.mkdir(failureFinalizerConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+const failedDatabaseEvidence = JSON.parse(await fs.readFile(path.join(
+  failedRunnerConfig.uploadDirectory, 'database-reconciliation.json'), 'utf8'));
+for (const [name, value] of [
+  ['candidate-binding.json', binding],
+  ['rollback-baseline.json', baseline],
+  ['database-reconciliation.json', failedDatabaseEvidence]
+]) {
+  await fs.writeFile(path.join(failureFinalizerConfig.uploadDirectory, name),
+    `${JSON.stringify(value)}\n`, { mode: 0o600, flag: 'wx' });
+}
+const databaseFailureTerminal = await finalizeExactStagingEvidence(failureFinalizerConfig, {
+  now: () => '2026-10-17T00:02:00.000Z'
+});
+assert.equal(databaseFailureTerminal.status, 'FAIL');
+assert.equal(databaseFailureTerminal.evidenceSetValid, true);
+assert.equal(databaseFailureTerminal.publishReconciliation.status, 'NOT_RUN');
+assert.deepEqual(databaseFailureTerminal.expectedEvidenceNames, [
+  'candidate-binding.json', 'database-reconciliation.json', 'rollback-baseline.json'
+]);
+
+await overwriteEvidence('database-reconciliation.json', databaseEvidence);
 const manifestedFiles = [
   'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
   'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
-  'fixture-evidence.json', 'uat-evidence.json'
+  'database-reconciliation.json', 'fixture-evidence.json', 'uat-evidence.json'
 ];
 const writeEvidenceManifest = async () => {
   const entries = [];
@@ -1018,6 +1291,18 @@ for (const mutate of [
 ]) {
   await expectFinalizationTamperRejected('publish-reconciliation.json', mutate,
     /CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_INVALID/);
+}
+
+for (const mutate of [
+  value => ({ ...value, productionAuthorized: true }),
+  value => ({ ...value, source: { ...value.source, tree: '8'.repeat(40) } }),
+  value => ({ ...value, artifact: { ...value.artifact,
+    databaseTreeSha256: '8'.repeat(64) } }),
+  value => ({ ...value, phases: { ...value.phases,
+    auditApply: { ...value.phases.auditApply, exitCode: 1 } } })
+]) {
+  await expectFinalizationTamperRejected('database-reconciliation.json', mutate,
+    /CNYOS_EXACT_STAGING_DATABASE_RECONCILIATION_INVALID/);
 }
 
 for (const mutate of [

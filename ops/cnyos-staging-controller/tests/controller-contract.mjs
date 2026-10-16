@@ -475,6 +475,7 @@ const protectedFoundationScripts = [
   'controller-uat-subscription-evidence.mjs',
   'exact-staging-publish.mjs',
   'exact-staging-release.mjs',
+  'reconcile-exact-staging-database.mjs',
   'materialize-exact-staging-config.mjs',
   'prepare-exact-staging-release.mjs',
   'run-exact-staging-clinical-uat.mjs',
