@@ -12,6 +12,7 @@ import {
   EXACT_STAGING_LIMITS,
   EXACT_STAGING_PRODUCTION_DENYLIST,
   EXACT_STAGING_SECRET_NAMES,
+  EXACT_STAGING_SYNTHETIC_HN_PATTERN,
   EXACT_STAGING_TARGET,
   EXACT_STAGING_WORKFLOW_PATH,
   ExactStagingReleaseError,
@@ -30,6 +31,7 @@ import {
   createExactStagingPublishIntent,
   deriveExactStagingTerminalStatus,
   executeExactStagingPublishAttempt,
+  finalizeExactStagingEvidence,
   reconcileExactStagingPublish
 } from '../scripts/exact-staging-publish.mjs';
 
@@ -52,6 +54,7 @@ const work = path.join(root, 'work');
 await fs.mkdir(dist, { recursive: true });
 await fs.mkdir(functions, { recursive: true });
 
+const controllerCommit = '9'.repeat(40);
 const commit = 'a'.repeat(40);
 const tree = 'b'.repeat(40);
 const rollback = 'c'.repeat(24);
@@ -115,6 +118,7 @@ await fs.writeFile(path.join(artifact, 'function-input-manifest.json'),
   `${JSON.stringify(functionManifest)}\n`);
 
 const config = loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
   CNYOS_EXPECTED_SOURCE_COMMIT: commit,
   CNYOS_EXPECTED_SOURCE_TREE: tree,
   CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
@@ -243,6 +247,29 @@ assert.throws(() => verifyExactStagingFunctionEnvironment(config, 'n'.repeat(32)
 const tampered = path.join(dist, 'app.js');
 await fs.appendFile(tampered, 'tamper');
 await assert.rejects(() => verifyExactStagingArtifact(config), ExactStagingReleaseError);
+await fs.writeFile(tampered, 'app.js:synthetic\n');
+
+const unexpectedRootFile = path.join(artifact, 'unexpected-root-file.txt');
+await fs.writeFile(unexpectedRootFile, 'must be rejected\n');
+await assert.rejects(() => verifyExactStagingArtifact(config),
+  /CNYOS_EXACT_STAGING_ARTIFACT_CLOSED_WORLD_INVALID/);
+await fs.rm(unexpectedRootFile);
+
+await fs.writeFile(config.functionManifestPath, `${JSON.stringify({
+  ...functionManifest,
+  source: { ...functionManifest.source, resolvedRefObjectId: '8'.repeat(40) }
+})}\n`);
+await assert.rejects(() => verifyExactStagingArtifact(config),
+  /CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID/);
+await fs.writeFile(config.functionManifestPath, `${JSON.stringify(functionManifest)}\n`);
+
+const savedFunctionManifest = path.join(artifact, 'function-input-manifest.saved.json');
+await fs.rename(config.functionManifestPath, savedFunctionManifest);
+await fs.symlink(savedFunctionManifest, config.functionManifestPath);
+await assert.rejects(() => verifyExactStagingArtifact(config),
+  /CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID/);
+await fs.rm(config.functionManifestPath);
+await fs.rename(savedFunctionManifest, config.functionManifestPath);
 
 assert.equal(EXACT_STAGING_ENVIRONMENT, 'cnyos-staging-publish');
 assert.equal(EXACT_STAGING_LIMITS.authUsers, 7);
@@ -252,27 +279,116 @@ assert.equal(EXACT_STAGING_LIMITS.requestRetries, 0);
 assert.deepEqual(EXACT_STAGING_SECRET_NAMES, [
   'CNYOS_STAGING_NETLIFY_AUTH_TOKEN',
   'CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY',
-  'CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY',
   'CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD'
 ]);
+assert.equal(EXACT_STAGING_SYNTHETIC_HN_PATTERN, '^CHANANYASTG-[0-9]{8}$');
 
 assert.match(workflow, /^on:\n  workflow_dispatch:\n/m);
 assert.doesNotMatch(workflow, /^\s+(?:push|pull_request|workflow_run|schedule):/m);
-for (const input of ['app_commit', 'app_tree', 'rollback_deploy_id', 'run_reference']) {
+assert.match(workflow, /^permissions:\n  actions: read\n  contents: read$/m);
+for (const input of [
+  'controller_commit', 'app_commit', 'app_tree', 'rollback_deploy_id', 'run_reference'
+]) {
   assert.match(workflow, new RegExp(`^      ${input}:$`, 'm'));
 }
 for (const forbiddenInput of ['site_id', 'origin', 'project_ref', 'clinic_id']) {
   assert.doesNotMatch(workflow, new RegExp(`^      ${forbiddenInput}:$`, 'm'));
 }
-assert.match(workflow, /repository: apisarit\/chananya-clinical-wellness-os/);
-assert.match(workflow, /ref: \$\{\{ inputs\.app_commit \}\}/);
-assert.match(workflow, /rev-parse 'HEAD\^\{tree\}'[\s\S]*CNYOS_EXPECTED_SOURCE_TREE/);
-assert.match(workflow, /environment:\n\s+name: cnyos-staging-publish/);
-assert.match(workflow, /GITHUB_REF_PROTECTED.*true/);
+const workflowJobSlice = name => {
+  const marker = `  ${name}:\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `workflow job ${name} is missing`);
+  const following = workflow.slice(start + marker.length);
+  const next = following.match(/^  [A-Za-z0-9_-]+:\n/m);
+  return workflow.slice(start, next ? start + marker.length + next.index : workflow.length);
+};
+const buildJob = workflowJobSlice('build_candidate_artifact');
+const protectedJob = workflowJobSlice('exact-staging-deploy-uat');
+
+assert.match(buildJob, /^  build_candidate_artifact:\n    needs: admit-controller-runtime$/m);
+assert.match(buildJob, /repository: apisarit\/chananya-clinical-wellness-os/);
+assert.match(buildJob, /ref: \$\{\{ inputs\.app_commit \}\}/);
+assert.match(buildJob, /rev-parse 'HEAD\^\{tree\}'[\s\S]*CNYOS_EXPECTED_SOURCE_TREE/);
+assert.doesNotMatch(buildJob, /^    environment:/m);
+assert.doesNotMatch(buildJob, /\$\{\{\s*secrets\./);
+for (const protectedName of EXACT_STAGING_SECRET_NAMES) {
+  assert.doesNotMatch(buildJob, new RegExp(protectedName));
+}
+assert.equal((buildJob.match(/\$\{\{ vars\.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY \}\}/g) || [])
+  .length, 1);
+assert.match(buildJob, /artifact_id: \$\{\{ steps\.upload_candidate\.outputs\.artifact-id \}\}/);
+assert.match(buildJob,
+  /artifact_digest: \$\{\{ steps\.upload_candidate\.outputs\.artifact-digest \}\}/);
+assert.match(buildJob,
+  /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4\.6\.2/);
+assert.match(buildJob, /id: upload_candidate/);
+assert.match(buildJob, /if-no-files-found: error/);
+assert.match(buildJob, /include-hidden-files: false/);
+assert.match(buildJob, /overwrite: false/);
+assert.match(buildJob, /retention-days: 1/);
+
+assert.match(protectedJob,
+  /^    needs:\n      - admit-controller-runtime\n      - build_candidate_artifact$/m);
+assert.match(protectedJob, /environment:\n\s+name: cnyos-staging-publish/);
+assert.doesNotMatch(protectedJob, /repository: apisarit\/chananya-clinical-wellness-os/);
+assert.doesNotMatch(protectedJob, /candidate-source/);
+assert.doesNotMatch(protectedJob,
+  /npm run check|npm run build:staging-artifact|materialize-staging-functions\.mjs/);
+assert.equal((protectedJob.match(/uses: actions\/checkout@/g) || []).length, 1);
+assert.match(protectedJob, /ref: \$\{\{ inputs\.controller_commit \}\}/);
+assert.match(protectedJob,
+  /uses: actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4\.3\.0/);
+assert.match(protectedJob,
+  /artifact-ids: \$\{\{ needs\.build_candidate_artifact\.outputs\.artifact_id \}\}/);
+assert.match(protectedJob, /merge-multiple: true/);
+assert.match(protectedJob, /CNYOS_CANDIDATE_ARTIFACT_ID" =~ \^\[0-9\]\+\$/);
+assert.match(protectedJob,
+  /CNYOS_CANDIDATE_ARTIFACT_DIGEST" =~ \^\[0-9a-f\]\{64\}\$/);
+assert.doesNotMatch(protectedJob, /name: cnyos-exact-staging-candidate-/);
+assert.equal((protectedJob.match(/\$\{\{ vars\.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY \}\}/g) || [])
+  .length, 1);
+const downloadIndex = protectedJob.indexOf('uses: actions/download-artifact@');
+const transportDigestIndex = protectedJob.indexOf(
+  '- name: Fail closed on the immutable artifact transport digest');
+const downloadedVerificationIndex = protectedJob.indexOf(
+  '- name: Verify downloaded closed-world artifact before any publish or UAT secret');
+const firstProtectedSecretIndex = protectedJob.indexOf('${{ secrets.');
+assert.ok(downloadIndex >= 0 && downloadIndex < transportDigestIndex,
+  'the immutable artifact must be downloaded before transport digest verification');
+assert.ok(transportDigestIndex < downloadedVerificationIndex,
+  'the transport digest must pass before closed-world content verification');
+assert.ok(downloadedVerificationIndex < firstProtectedSecretIndex,
+  'downloaded artifact verification must complete before the first protected secret');
+const protectedPrefix = protectedJob.slice(0, firstProtectedSecretIndex);
+assert.doesNotMatch(protectedPrefix,
+  /candidate-source|npm run build|materialize-staging-functions|chananya-clinical-wellness-os/);
+assert.match(protectedPrefix, /verifyExactStagingArtifact\(loadExactStagingConfig\(\)\)/);
+assert.match(protectedPrefix,
+  /actions\/artifacts\/\$\{CNYOS_CANDIDATE_ARTIFACT_ID:\?\}\/zip/);
+assert.match(protectedPrefix,
+  /test "\$observed_digest" = "\$CNYOS_CANDIDATE_ARTIFACT_DIGEST"/);
+assert.doesNotMatch(workflow, /GITHUB_REF_PROTECTED/);
+assert.match(workflow, /GITHUB_ACTOR" = "apisarit"/);
+assert.match(workflow, /GITHUB_ACTOR_ID" = "216305243"/);
+assert.match(workflow, /GITHUB_TRIGGERING_ACTOR" = "\$GITHUB_ACTOR"/);
 assert.match(workflow, /GITHUB_RUN_ATTEMPT.*1/);
-assert.match(workflow, /XDG_CONFIG_HOME: \$\{\{ runner\.temp \}\}\/cnyos-netlify-config/);
-assert.match(workflow, /XDG_CACHE_HOME: \$\{\{ runner\.temp \}\}\/cnyos-netlify-cache/);
-assert.match(workflow, /mkdir -m 700 "\$XDG_CONFIG_HOME" "\$XDG_CACHE_HOME"/);
+assert.match(workflow, /CNYOS_EXPECTED_CONTROLLER_COMMIT" = "\$GITHUB_SHA"/);
+assert.match(workflow, /GITHUB_WORKFLOW_SHA" = "\$GITHUB_SHA"/);
+assert.match(workflow, /git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
+for (const [name, job] of [
+  ['build_candidate_artifact', buildJob], ['exact-staging-deploy-uat', protectedJob]
+]) {
+  const jobHeader = job.match(new RegExp(`^  ${name}:\\n[\\s\\S]*?^    steps:\\n`, 'm'))?.[0];
+  assert.ok(jobHeader, `${name} header is missing`);
+  assert.doesNotMatch(jobHeader, /\$\{\{\s*runner\.temp\s*\}\}/,
+    'runner context is unavailable in job-level env');
+}
+assert.match(workflow,
+  /printf 'XDG_CONFIG_HOME=%s\/cnyos-netlify-config\\n' \\\n\s+"\$\{RUNNER_TEMP:\?\}" >> "\$\{GITHUB_ENV:\?\}"/);
+assert.match(workflow,
+  /printf 'XDG_CACHE_HOME=%s\/cnyos-netlify-cache\\n' \\\n\s+"\$\{RUNNER_TEMP:\?\}" >> "\$\{GITHUB_ENV:\?\}"/);
+assert.match(workflow,
+  /mkdir -m 700 \\\n\s+"\$\{RUNNER_TEMP:\?\}\/cnyos-netlify-config" \\\n\s+"\$\{RUNNER_TEMP:\?\}\/cnyos-netlify-cache"/);
 assert.doesNotMatch(workflow, /npx\s|npm exec|--yes/);
 assert.match(workflow, /exact-staging-publish\.mjs attempt/);
 assert.match(workflow, /if: \$\{\{ always\(\) && steps\.publish_attempt\.outcome != 'skipped' \}\}/);
@@ -295,7 +411,7 @@ assert.match(workflow, /hsmnjwxurlmsizndjlun/);
 assert.match(workflow, /qptxnrldzzinlcabudjv/);
 assert.match(workflow, /7da5e39e-580d-44f1-8623-605313e2fb2b/);
 assert.match(workflow, /run-exact-staging-clinical-uat\.mjs/);
-assert.match(workflow, /retention-days: 7/);
+assert.match(protectedJob, /retention-days: 7/);
 assert.doesNotMatch(workflow, /id-token:\s*write/);
 
 for (const role of [
@@ -311,6 +427,11 @@ for (const operation of [
 ]) assert.match(runner, new RegExp(operation));
 assert.match(runner, /realPhiUsed: false/);
 assert.match(runner, /SYNTHETIC-E2E/);
+assert.match(runner, /EXACT_STAGING_SYNTHETIC_HN_PATTERN/);
+assert.match(runner, /hnGeneratedByServer: true/);
+assert.match(runner, /patient\.payment_right !== 'SYNTHETIC-E2E'/);
+assert.match(runner, /patient\.email != null/);
+assert.match(runner, /patient\.created_by/);
 assert.match(runner, /browserOpdWrites/);
 assert.match(runner, /stoppedWithoutRetry: true/);
 assert.match(runner, /route\.fetch\(\{ timeout: config\.limits\.requestTimeoutMs \}\)/);
@@ -327,22 +448,41 @@ assert.match(runner, /rawSha256: receiptBytes \? sha256\(receiptBytes\) : null/)
 assert.match(runner, /deployReceiptCaptured: receipt !== null/);
 
 const binding = {
-  kind: 'cnyos_exact_staging_candidate_binding', stagingOnly: true,
+  schemaVersion: 1, kind: 'cnyos_exact_staging_candidate_binding', stagingOnly: true,
   productionAuthorized: false, source: { commit, tree },
+  controller: {
+    repository: 'apisarit/cnyos-staging-deployment-control',
+    commit: controllerCommit,
+    workflowPath: '.github/workflows/cnyos-exact-staging-deploy-uat.yml'
+  },
   target: {
     siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin,
-    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef
+    deploymentId: EXACT_STAGING_TARGET.deploymentId,
+    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    clinicId: EXACT_STAGING_TARGET.clinicId
   }, rollbackBaselineDeployId: rollback,
-  artifact: verified.artifact
+  artifact: verified.artifact,
+  functionEnvironment,
+  limits: config.limits,
+  preparedAt: '2026-10-13T00:00:30.000Z'
 };
 const baseline = {
-  kind: 'cnyos_exact_staging_rollback_baseline',
-  siteId: EXACT_STAGING_TARGET.netlifySiteId, deployId: rollback
+  schemaVersion: 1, kind: 'cnyos_exact_staging_rollback_baseline', stagingOnly: true,
+  siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin,
+  deployId: rollback,
+  exactDeployOrigin:
+    `https://${rollback}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app`,
+  observedAt: '2026-10-13T00:00:00.000Z'
 };
 const intent = createExactStagingPublishIntent(config, binding, baseline, {
   now: '2026-10-13T00:01:00.000Z', workflowRunId: '12345'
 });
+assert.equal(intent.controller.commit, controllerCommit);
 assert.equal(intent.automaticRollbackAuthorized, false);
+assert.throws(() => createExactStagingPublishIntent(config, {
+  ...binding,
+  controller: { ...binding.controller, commit: '8'.repeat(40) }
+}, baseline), /CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
 for (const artifactKey of [
   'deployManifestSha256', 'runtimeManifestSha256',
   'functionManifestSha256', 'functionTreeSha256'
@@ -381,6 +521,7 @@ assert.equal(deriveExactStagingTerminalStatus('UNCERTAIN', 'FAIL', false), 'UNCE
 
 const publishWork = path.join(root, 'publish-work');
 const publishConfig = loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
   CNYOS_EXPECTED_SOURCE_COMMIT: commit,
   CNYOS_EXPECTED_SOURCE_TREE: tree,
   CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
@@ -419,6 +560,97 @@ const attemptEvidence = await executeExactStagingPublishAttempt(publishConfig, t
   }
 });
 assert.equal(attemptEvidence.cliOutcome, 'EXIT_NONZERO');
+const evidencePath = name => path.join(publishConfig.uploadDirectory, name);
+const overwriteEvidence = async (name, value) => {
+  await fs.writeFile(evidencePath(name), `${JSON.stringify(value)}\n`, { mode: 0o600 });
+  await fs.chmod(evidencePath(name), 0o600);
+};
+const readEvidence = async name => JSON.parse(await fs.readFile(evidencePath(name), 'utf8'));
+const persistedIntent = await readEvidence('publish-intent.json');
+const persistedAttempt = await readEvidence('publish-attempt.json');
+const expectPreObservationRejection = async expected => {
+  await assert.rejects(() => reconcileExactStagingPublish(publishConfig, token, {
+    attempts: 1, delayMs: 0,
+    fetchImpl: async () => { throw new Error('observation must not run'); }
+  }), expected);
+};
+
+await overwriteEvidence('candidate-binding.json', {
+  ...binding,
+  artifact: { ...binding.artifact, runtimeManifestSha256: '0'.repeat(64) }
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+await overwriteEvidence('candidate-binding.json', binding);
+
+for (const mutate of [
+  value => ({ ...value, artifact: { ...value.artifact,
+    source: { ...value.artifact.source, commit: '8'.repeat(40) } } }),
+  value => ({ ...value, artifact: { ...value.artifact, runtimeFileCount: 0 } }),
+  value => ({ ...value, functionEnvironment: { ...value.functionEnvironment,
+    exactValuesSha256: '0'.repeat(64) } }),
+  value => ({ ...value, limits: { ...value.limits, authUsers: 6 } })
+]) {
+  await overwriteEvidence('candidate-binding.json', mutate(structuredClone(binding)));
+  await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+  await overwriteEvidence('candidate-binding.json', binding);
+}
+
+await overwriteEvidence('rollback-baseline.json', {
+  ...baseline, deployId: 'e'.repeat(24),
+  exactDeployOrigin:
+    `https://${'e'.repeat(24)}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app`
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+await overwriteEvidence('rollback-baseline.json', baseline);
+
+await overwriteEvidence('rollback-baseline.json', {
+  ...baseline, observedAt: 'not-an-iso-timestamp'
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+await overwriteEvidence('rollback-baseline.json', baseline);
+
+const tamperedIntent = {
+  ...persistedIntent,
+  artifact: { ...persistedIntent.artifact, runtimeManifestSha256: '0'.repeat(64) }
+};
+await overwriteEvidence('publish-intent.json', tamperedIntent);
+await overwriteEvidence('publish-attempt.json', {
+  ...persistedAttempt,
+  intentSha256: sha256(Buffer.from(JSON.stringify(tamperedIntent)))
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+await overwriteEvidence('publish-intent.json', persistedIntent);
+await overwriteEvidence('publish-attempt.json', persistedAttempt);
+
+const expectCoordinatedIntentRejection = async mutate => {
+  const changedIntent = mutate(structuredClone(persistedIntent));
+  await overwriteEvidence('publish-intent.json', changedIntent);
+  await overwriteEvidence('publish-attempt.json', {
+    ...persistedAttempt,
+    intentSha256: sha256(Buffer.from(JSON.stringify(changedIntent)))
+  });
+  await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+  await overwriteEvidence('publish-intent.json', persistedIntent);
+  await overwriteEvidence('publish-attempt.json', persistedAttempt);
+};
+for (const mutate of [
+  value => ({ ...value, automaticRollbackAttempted: true }),
+  value => ({ ...value, operation: { ...value.operation, cliTimeoutSeconds: 121 } }),
+  value => ({ ...value, run: { ...value.run, workflowRunId: 'fabricated' } })
+]) await expectCoordinatedIntentRejection(mutate);
+
+for (const mutate of [
+  value => ({ ...value, outputSecretBoundaryViolated: true }),
+  value => ({ ...value, cliOutcome: 'EXIT_ZERO', exitCode: 1 }),
+  value => ({ ...value, stdoutByteLength: 1, stdoutSha256: null }),
+  value => ({ ...value, retryCount: 1 }),
+  value => ({ ...value, completedAt: '2026-10-13T00:09:59.000Z' })
+]) {
+  await overwriteEvidence('publish-attempt.json', mutate(structuredClone(persistedAttempt)));
+  await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+  await overwriteEvidence('publish-attempt.json', persistedAttempt);
+}
+
 const candidateDeployId = 'd'.repeat(24);
 const runtimeManifestBytes = await fs.readFile(path.join(dist, 'runtime-publish-manifest.json'));
 const response = value => new Response(typeof value === 'string' || Buffer.isBuffer(value)
@@ -449,5 +681,226 @@ assert.equal(reconciled.cliOutcome, 'EXIT_NONZERO');
 assert.equal(existsSync(path.join(publishConfig.privateDirectory,
   'netlify-deploy-receipt.json')), true);
 assert.match(await fs.readFile(githubOutput, 'utf8'), /publish_reconciled=true/);
+const normalizedReceipt = JSON.parse(await fs.readFile(path.join(publishConfig.privateDirectory,
+  'netlify-deploy-receipt.json'), 'utf8'));
+await overwriteEvidence('deploy-receipt.json', normalizedReceipt);
+const roleKeys = [
+  'reception', 'source_practitioner', 'attending', 'pharmacy_reviewer',
+  'pharmacy_dispenser', 'billing', 'admin'
+];
+const roleTuples = {
+  reception: ['reception', 'staff', 'reception'],
+  source_practitioner: ['practitioner', 'staff', 'practitioner'],
+  attending: ['doctor', 'staff', 'doctor'],
+  pharmacy_reviewer: ['pharmacy', 'staff', 'pharmacy'],
+  pharmacy_dispenser: ['pharmacy', 'staff', 'pharmacy'],
+  billing: ['billing', 'staff', 'billing'],
+  admin: ['viewer', 'admin', 'admin']
+};
+const accounts = Object.fromEntries(roleKeys.map((key, index) => [key, {
+  userId: `${String(index + 1).repeat(8)}-${String(index + 1).repeat(4)}-4${String(index + 1).repeat(3)}-a${String(index + 1).repeat(3)}-${String(index + 1).repeat(12)}`,
+  emailSha256: String(index + 1).repeat(64),
+  profileRole: roleTuples[key][0], systemRole: roleTuples[key][1],
+  clinicRole: roleTuples[key][2], syntheticMarkerVerified: true,
+  authenticatedSessionVerified: true
+}]));
+const actorIds = Object.fromEntries(roleKeys.map(key => [key, accounts[key].userId]));
+const syntheticPatient = {
+  id: '88888888-8888-4888-a888-888888888888',
+  hn: 'CHANANYASTG-00000001', syntheticRunSuffix: publishConfig.runId.slice(-8),
+  hnGeneratedByServer: true, clinicId: EXACT_STAGING_TARGET.clinicId,
+  paymentRight: 'SYNTHETIC-E2E', realIdentifiersAbsent: true
+};
+const fixtureEvidence = {
+  schemaVersion: 1, kind: 'cnyos_exact_staging_synthetic_fixture', status: 'PASS',
+  syntheticOnly: true, realPhiUsed: false, controller: binding.controller,
+  source: { commit, tree }, deployId: candidateDeployId, runId: publishConfig.runId,
+  accounts, distinctAccountCount: roleKeys.length, patient: syntheticPatient,
+  limits: publishConfig.limits
+};
+const uatEvidence = {
+  schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat', status: 'PASS',
+  stagingOnly: true, productionAuthorized: false, controller: binding.controller,
+  source: { commit, tree }, deployment: normalizedReceipt,
+  target: {
+    origin: EXACT_STAGING_TARGET.origin, siteId: EXACT_STAGING_TARGET.netlifySiteId,
+    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    clinicId: EXACT_STAGING_TARGET.clinicId
+  },
+  journey: {
+    syntheticOnly: true, realPhiUsed: false, runId: publishConfig.runId,
+    actorIds, patient: syntheticPatient,
+    opdBrowserProof: {
+      contexts: 3, saveReloadAmend: true, writes: publishConfig.limits.browserOpdWrites,
+      writeLedger: {
+        limit: publishConfig.limits.browserOpdWrites,
+        dispatched: publishConfig.limits.browserOpdWrites, contextCount: 3,
+        perContext: [
+          { contextOrdinal: 1, writes: 1 },
+          { contextOrdinal: 2, writes: 1 },
+          { contextOrdinal: 3, writes: 0 }
+        ],
+        records: [
+          { ordinal: 1, contextOrdinal: 1, rpc: 'save_ttm_opd_history',
+            reservedBeforeFetch: true },
+          { ordinal: 2, contextOrdinal: 2, rpc: 'save_ttm_opd_history',
+            reservedBeforeFetch: true }
+        ]
+      }
+    },
+    consult: { status: 'completed' }, admission: { status: 'admitted' },
+    pharmacy: {
+      separated: true, reviewerActorId: actorIds.pharmacy_reviewer,
+      dispenserActorId: actorIds.pharmacy_dispenser
+    },
+    billing: { grandTotal: 800, invoiceStatus: 'paid', actorId: actorIds.billing },
+    admin: { actorId: actorIds.admin, separatelyAuthenticated: true }
+  },
+  mutationBudget: { limit: publishConfig.limits.totalMutations, dispatched: 1,
+    writeRetries: 0, records: [{ ordinal: 1 }] },
+  startedAt: '2026-10-13T00:11:01.000Z',
+  completedAt: '2026-10-13T00:11:30.000Z'
+};
+await overwriteEvidence('fixture-evidence.json', fixtureEvidence);
+await overwriteEvidence('uat-evidence.json', uatEvidence);
+const manifestedFiles = [
+  'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
+  'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
+  'fixture-evidence.json', 'uat-evidence.json'
+];
+const writeEvidenceManifest = async () => {
+  const entries = [];
+  for (const name of manifestedFiles) {
+    const bytes = await fs.readFile(evidencePath(name));
+    entries.push({ name, size: bytes.length, sha256: sha256(bytes) });
+  }
+  await overwriteEvidence('evidence-manifest.json', {
+    schemaVersion: 1, kind: 'cnyos_exact_staging_evidence_manifest', status: 'PASS',
+    stagingOnly: true, productionAuthorized: false, controller: binding.controller,
+    source: { commit, tree }, deployId: candidateDeployId, rollbackDeployId: rollback,
+    evidence: entries
+  });
+};
+await writeEvidenceManifest();
+
+const terminal = await finalizeExactStagingEvidence(publishConfig, {
+  now: () => '2026-10-13T00:12:00.000Z'
+});
+assert.equal(terminal.status, 'PASS');
+assert.equal(terminal.evidenceSetValid, true);
+assert.equal(terminal.controller.commit, controllerCommit);
+await fs.rm(evidencePath('terminal-evidence.json'));
+
+const validEvidence = new Map();
+for (const name of [...manifestedFiles, 'evidence-manifest.json']) {
+  validEvidence.set(name, await readEvidence(name));
+}
+const expectFinalizationTamperRejected = async (name, mutate, expected, {
+  rebuildManifest = true
+} = {}) => {
+  const original = validEvidence.get(name);
+  await overwriteEvidence(name, mutate(structuredClone(original)));
+  if (rebuildManifest && name !== 'evidence-manifest.json') await writeEvidenceManifest();
+  await assert.rejects(() => finalizeExactStagingEvidence(publishConfig), expected);
+  await overwriteEvidence(name, original);
+  await writeEvidenceManifest();
+};
+
+for (const mutate of [
+  value => ({ ...value, target: { ...value.target, origin: 'https://cnyos.cloud' } }),
+  value => ({ ...value, result: 'FABRICATED_PASS' }),
+  value => ({ ...value, status: 'FABRICATED' }),
+  value => ({ ...value, normalizedDeployId: rollback }),
+  value => ({ ...value, cliOutcome: 'EXIT_ZERO' }),
+  value => ({ ...value, reconciledAt: 'not-an-iso-timestamp' })
+]) {
+  await expectFinalizationTamperRejected('publish-reconciliation.json', mutate,
+    /CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_INVALID/);
+}
+
+for (const mutate of [
+  value => ({ ...value, kind: 'fabricated_uat' }),
+  value => ({ ...value, source: { ...value.source, commit: '8'.repeat(40) } }),
+  value => ({ ...value, deployment: { ...value.deployment, deployId: 'e'.repeat(24),
+    exactDeployOrigin:
+      `https://${'e'.repeat(24)}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app` } }),
+  value => ({ ...value, target: { ...value.target, siteId: '0'.repeat(36) } }),
+  value => ({ ...value, controller: { ...value.controller, commit: '8'.repeat(40) } }),
+  value => ({ ...value, journey: { ...value.journey, runId: 'SYNTH-FABRICATED' } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, hn: 'SYNTHETIC-E2E-TEST'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, hn: 'CHANANYASTG-000000001'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, syntheticRunSuffix: 'BADRUNID'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, hnGeneratedByServer: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, clinicId: '00000000-0000-4000-8000-000000000000'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, paymentRight: 'CASH'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, actorIds: {
+    ...value.journey.actorIds,
+    pharmacy_dispenser: value.journey.actorIds.pharmacy_reviewer
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, opdBrowserProof: {
+    ...value.journey.opdBrowserProof, saveReloadAmend: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, pharmacy: {
+    ...value.journey.pharmacy, separated: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, billing: {
+    ...value.journey.billing, invoiceStatus: 'open'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin, separatelyAuthenticated: false
+  } } })
+]) {
+  await expectFinalizationTamperRejected('uat-evidence.json', mutate,
+    /CNYOS_EXACT_STAGING_(?:UAT_EVIDENCE|DEPLOY_RECEIPT)_INVALID/);
+}
+
+await expectFinalizationTamperRejected('fixture-evidence.json', value => ({
+  ...value, patient: { ...value.patient, id: '77777777-7777-4777-a777-777777777777' }
+}), /CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID/);
+for (const mutatePatient of [
+  patient => ({ ...patient, hn: 'CHANANYASTG-000000001' }),
+  patient => ({ ...patient, syntheticRunSuffix: 'BADRUNID' }),
+  patient => ({ ...patient, hnGeneratedByServer: false }),
+  patient => ({ ...patient, clinicId: '00000000-0000-4000-8000-000000000000' }),
+  patient => ({ ...patient, paymentRight: 'CASH' })
+]) {
+  await expectFinalizationTamperRejected('fixture-evidence.json', value => ({
+    ...value, patient: mutatePatient(value.patient)
+  }), /CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID/);
+}
+await expectFinalizationTamperRejected('fixture-evidence.json', value => ({
+  ...value, accounts: { ...value.accounts, admin: {
+    ...value.accounts.admin, clinicRole: 'viewer'
+  } }
+}), /CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID/);
+await expectFinalizationTamperRejected('deploy-receipt.json', value => ({
+  ...value, source: { ...value.source, tree: '8'.repeat(40) }
+}), /CNYOS_EXACT_STAGING_DEPLOY_RECEIPT_INVALID/);
+await expectFinalizationTamperRejected('publish-attempt.json', value => ({
+  ...value, completedAt: '2099-01-01T00:00:00.000Z'
+}), /CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID/, { rebuildManifest: false });
+await expectFinalizationTamperRejected('evidence-manifest.json', value => ({
+  ...value,
+  evidence: value.evidence.map((entry, index) => index === 0
+    ? { ...entry, sha256: '0'.repeat(64) } : entry)
+}), /CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID/, { rebuildManifest: false });
+
+const terminalAfterAdversarialChecks = await finalizeExactStagingEvidence(publishConfig, {
+  now: () => '2026-10-13T00:13:00.000Z'
+});
+assert.equal(terminalAfterAdversarialChecks.status, 'PASS');
+assert.equal(terminalAfterAdversarialChecks.evidenceSetValid, true);
 
 process.stdout.write('Exact staging release contracts passed.\n');

@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import {
+  EXACT_STAGING_SYNTHETIC_HN_PATTERN,
   EXACT_STAGING_TARGET,
   ExactStagingReleaseError,
   assertScopedOpdWriteBody,
@@ -18,6 +19,8 @@ import {
 } from './exact-staging-release.mjs';
 
 const MAX_BODY = 2 * 1024 * 1024;
+const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
+const CONTROLLER_WORKFLOW_PATH = '.github/workflows/cnyos-exact-staging-deploy-uat.yml';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLE_SPECS = Object.freeze([
   Object.freeze({ key: 'reception', profileRole: 'reception', systemRole: 'staff', clinicRole: 'reception' }),
@@ -68,6 +71,14 @@ function first(value, code) {
 
 function randomKey() {
   return crypto.randomUUID();
+}
+
+function controllerEvidence(config) {
+  return Object.freeze({
+    repository: CONTROLLER_REPOSITORY,
+    commit: config.controllerCommit,
+    workflowPath: CONTROLLER_WORKFLOW_PATH
+  });
 }
 
 class MutationBudget {
@@ -524,7 +535,12 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
     p_payment_right: 'SYNTHETIC-E2E', p_emergency_contact_name: null,
     p_allergy: 'SYNTHETIC NONE'
   }), 'CNYOS_EXACT_STAGING_PATIENT_INVALID');
-  if (!UUID.test(patient.id) || patient.national_id != null || patient.phone != null) {
+  if (!UUID.test(patient.id) ||
+    !new RegExp(EXACT_STAGING_SYNTHETIC_HN_PATTERN).test(String(patient.hn || '')) ||
+    String(patient.clinic_id || '').toLowerCase() !== EXACT_STAGING_TARGET.clinicId ||
+    patient.payment_right !== 'SYNTHETIC-E2E' || patient.national_id != null ||
+    patient.phone != null || patient.email != null ||
+    String(patient.created_by || '').toLowerCase() !== accounts.reception.userId) {
     fail('CNYOS_EXACT_STAGING_PATIENT_INVALID');
   }
   const starts = new Date(Date.now() + 72 * 3600_000);
@@ -649,7 +665,11 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
     realPhiUsed: false,
     runId: config.runId,
     actorIds: Object.fromEntries(ROLE_SPECS.map(spec => [spec.key, accounts[spec.key].userId])),
-    patient: { id: patient.id, hn: patient.hn, realIdentifiersAbsent: true },
+    patient: {
+      id: patient.id, hn: patient.hn, syntheticRunSuffix: suffix,
+      hnGeneratedByServer: true, clinicId: EXACT_STAGING_TARGET.clinicId,
+      paymentRight: 'SYNTHETIC-E2E', realIdentifiersAbsent: true
+    },
     appointment: { id: appointment.id, number: appointment.appointment_no },
     encounter: { id: encounter.encounter_id, number: encounter.encounter_no },
     opdBrowserProof: browser,
@@ -693,6 +713,7 @@ async function main() {
       const receiptError = {
         schemaVersion: 1, kind: 'cnyos_exact_staging_deploy_receipt_error',
         status: 'UNCERTAIN', stagingOnly: true, productionAuthorized: false,
+        controller: controllerEvidence(configBase),
         source: { commit: configBase.appCommit, tree: configBase.appTree },
         rawByteLength: receiptBytes?.length ?? null,
         rawSha256: receiptBytes ? sha256(receiptBytes) : null,
@@ -733,11 +754,12 @@ async function main() {
       userId: accounts[spec.key].userId,
       emailSha256: sha256(accounts[spec.key].email),
       profileRole: spec.profileRole, systemRole: spec.systemRole, clinicRole: spec.clinicRole,
-      syntheticMarkerVerified: true
+      syntheticMarkerVerified: true, authenticatedSessionVerified: true
     }]));
     const fixtureEvidence = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_synthetic_fixture',
       status: 'PASS', syntheticOnly: true, realPhiUsed: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployId: receipt.deployId, runId: config.runId,
       accounts: accountEvidence,
@@ -748,6 +770,7 @@ async function main() {
     const uatEvidence = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat',
       status: 'PASS', stagingOnly: true, productionAuthorized: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployment: receipt,
       target: {
@@ -779,6 +802,7 @@ async function main() {
     const manifest = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_evidence_manifest',
       status: 'PASS', stagingOnly: true, productionAuthorized: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployId: receipt.deployId, rollbackDeployId: config.rollbackDeployId,
       evidence: entries
@@ -791,6 +815,7 @@ async function main() {
     const failure = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat', status,
       stagingOnly: true, productionAuthorized: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployId: receipt?.deployId ?? null,
       deployReceiptCaptured: receipt !== null,

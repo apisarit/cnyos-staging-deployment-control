@@ -34,9 +34,9 @@ export const EXACT_STAGING_ENVIRONMENT = 'cnyos-staging-publish';
 export const EXACT_STAGING_SECRET_NAMES = Object.freeze([
   'CNYOS_STAGING_NETLIFY_AUTH_TOKEN',
   'CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY',
-  'CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY',
   'CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD'
 ]);
+export const EXACT_STAGING_SYNTHETIC_HN_PATTERN = '^CHANANYASTG-[0-9]{8}$';
 export const EXACT_STAGING_FUNCTION_ENVIRONMENT = Object.freeze({
   SUPABASE_URL: EXACT_STAGING_TARGET.supabaseOrigin,
   CNYOS_OWNER_EXPECTED_PROJECT_REF: EXACT_STAGING_TARGET.supabaseProjectRef,
@@ -117,6 +117,8 @@ export function canonicalJson(value) {
 }
 
 export function loadExactStagingConfig(env = process.env) {
+  const controllerCommit = exact(env.CNYOS_EXPECTED_CONTROLLER_COMMIT, SHA40,
+    'CNYOS_EXACT_STAGING_CONTROLLER_COMMIT_INVALID');
   const appCommit = exact(env.CNYOS_EXPECTED_SOURCE_COMMIT, SHA40,
     'CNYOS_EXACT_STAGING_SOURCE_COMMIT_INVALID');
   const appTree = exact(env.CNYOS_EXPECTED_SOURCE_TREE, SHA40,
@@ -137,6 +139,7 @@ export function loadExactStagingConfig(env = process.env) {
     fail('CNYOS_EXACT_STAGING_DIRECTORY_INVALID');
   }
   return Object.freeze({
+    controllerCommit,
     appCommit,
     appTree,
     rollbackDeployId,
@@ -200,11 +203,17 @@ function assertStagingDeployManifest(manifest, config) {
 }
 
 export async function verifyExactStagingArtifact(config) {
+  const artifactStatus = await fs.lstat(config.artifactDirectory).catch(() => null);
   const distStatus = await fs.lstat(config.distDirectory).catch(() => null);
   const functionStatus = await fs.lstat(config.functionsDirectory).catch(() => null);
-  if (!distStatus?.isDirectory() || distStatus.isSymbolicLink() ||
+  const functionManifestStatus = await fs.lstat(config.functionManifestPath).catch(() => null);
+  if (!artifactStatus?.isDirectory() || artifactStatus.isSymbolicLink() ||
+    !distStatus?.isDirectory() || distStatus.isSymbolicLink() ||
     !functionStatus?.isDirectory() || functionStatus.isSymbolicLink()) {
     fail('CNYOS_EXACT_STAGING_ARTIFACT_DIRECTORY_INVALID');
+  }
+  if (!functionManifestStatus?.isFile() || functionManifestStatus.isSymbolicLink()) {
+    fail('CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID');
   }
   const { value: deployManifest, bytes: deployBytes } = await readJson(
     path.join(config.distDirectory, 'deploy-manifest.json'),
@@ -247,6 +256,7 @@ export async function verifyExactStagingArtifact(config) {
     !Array.isArray(functionManifest.files) || functionManifest.files.length !== functionFiles.length ||
     functionManifest.fileCount !== functionFiles.length ||
     functionManifest?.source?.requestedRef !== config.appCommit ||
+    functionManifest?.source?.resolvedRefObjectId !== config.appCommit ||
     !SHA256.test(String(functionManifest.manifestSha256 || '')) ||
     !SHA256.test(String(functionManifest.treeSha256 || ''))) {
     fail('CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID');
@@ -268,6 +278,15 @@ export async function verifyExactStagingArtifact(config) {
   if (sha256(Buffer.from(JSON.stringify(functionManifest.files))) !==
       functionManifest.manifestSha256) {
     fail('CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_DIGEST_INVALID');
+  }
+  const observedArtifact = await safeFiles(config.artifactDirectory);
+  const expectedArtifact = [
+    ...observedDist.map(name => `dist/${name}`),
+    ...functionFiles.map(name => `functions/${name}`),
+    'function-input-manifest.json'
+  ].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+  if (canonicalJson(observedArtifact) !== canonicalJson(expectedArtifact)) {
+    fail('CNYOS_EXACT_STAGING_ARTIFACT_CLOSED_WORLD_INVALID');
   }
   const artifact = Object.freeze({
     source: Object.freeze({ commit: config.appCommit, tree: config.appTree }),

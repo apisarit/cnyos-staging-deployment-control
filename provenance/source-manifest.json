@@ -1119,32 +1119,32 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/EXACT-STAGING-RUN.md",
       "path": "ops/cnyos-staging-controller/EXACT-STAGING-RUN.md",
-      "bytes": 2797,
-      "inputSha256": "0cdaa11bf8ae99816fcac93b16886063be5b65a4a25ba941d1f6c4a991afcf76",
-      "outputSha256": "0cdaa11bf8ae99816fcac93b16886063be5b65a4a25ba941d1f6c4a991afcf76",
+      "bytes": 4651,
+      "inputSha256": "15d393cb97c8b1de4abe25d6b5370beeff964f7fd1330b0ba31d8123ef827d05",
+      "outputSha256": "15d393cb97c8b1de4abe25d6b5370beeff964f7fd1330b0ba31d8123ef827d05",
       "mode": "100644",
-      "inputBytes": 2797,
-      "outputBytes": 2797
+      "inputBytes": 4651,
+      "outputBytes": 4651
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/exact-staging-release.mjs",
       "path": "ops/cnyos-staging-controller/scripts/exact-staging-release.mjs",
-      "bytes": 25568,
-      "inputSha256": "6c3a3ea6806675f3554e7ea48d28a046e8eebeb5399c1559f7ff7f1b6128fd06",
-      "outputSha256": "6c3a3ea6806675f3554e7ea48d28a046e8eebeb5399c1559f7ff7f1b6128fd06",
+      "bytes": 26681,
+      "inputSha256": "8ea8959ec77229853ec040a971567a0ec8d27105b223ecb6cccf68329e7373aa",
+      "outputSha256": "8ea8959ec77229853ec040a971567a0ec8d27105b223ecb6cccf68329e7373aa",
       "mode": "100644",
-      "inputBytes": 25568,
-      "outputBytes": 25568
+      "inputBytes": 26681,
+      "outputBytes": 26681
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/exact-staging-publish.mjs",
       "path": "ops/cnyos-staging-controller/scripts/exact-staging-publish.mjs",
-      "bytes": 24355,
-      "inputSha256": "2e558396d7c772b22ac8f120726f0d3acaedf0a888f4c6b6df6fe0ae8ce67232",
-      "outputSha256": "2e558396d7c772b22ac8f120726f0d3acaedf0a888f4c6b6df6fe0ae8ce67232",
+      "bytes": 47205,
+      "inputSha256": "89c5ff06a6321989cfd5399976a1c8b6a964947f2db98abbea8c81fde7ddd9c8",
+      "outputSha256": "89c5ff06a6321989cfd5399976a1c8b6a964947f2db98abbea8c81fde7ddd9c8",
       "mode": "100644",
-      "inputBytes": 24355,
-      "outputBytes": 24355
+      "inputBytes": 47205,
+      "outputBytes": 47205
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/materialize-exact-staging-config.mjs",
@@ -1159,22 +1159,22 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/prepare-exact-staging-release.mjs",
       "path": "ops/cnyos-staging-controller/scripts/prepare-exact-staging-release.mjs",
-      "bytes": 2088,
-      "inputSha256": "31e9e8607f5802c286003bffec71bf8590354a58f5dcf155a214f7892fcbb707",
-      "outputSha256": "31e9e8607f5802c286003bffec71bf8590354a58f5dcf155a214f7892fcbb707",
+      "bytes": 2280,
+      "inputSha256": "a6a27dcd510c9ba761edc8509545b1db19c23101ed9126677c31a64056b4e98b",
+      "outputSha256": "a6a27dcd510c9ba761edc8509545b1db19c23101ed9126677c31a64056b4e98b",
       "mode": "100644",
-      "inputBytes": 2088,
-      "outputBytes": 2088
+      "inputBytes": 2280,
+      "outputBytes": 2280
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/scripts/run-exact-staging-clinical-uat.mjs",
       "path": "ops/cnyos-staging-controller/scripts/run-exact-staging-clinical-uat.mjs",
-      "bytes": 40189,
-      "inputSha256": "eda563a887350ee20213064e3f750044f97fdbde7570ec2c9648c84912b0db96",
-      "outputSha256": "eda563a887350ee20213064e3f750044f97fdbde7570ec2c9648c84912b0db96",
+      "bytes": 41338,
+      "inputSha256": "1eb43c65926f8c081febdaf690dc514039126bc2a41ab471785380963ec9eb46",
+      "outputSha256": "1eb43c65926f8c081febdaf690dc514039126bc2a41ab471785380963ec9eb46",
       "mode": "100644",
-      "inputBytes": 40189,
-      "outputBytes": 40189
+      "inputBytes": 41338,
+      "outputBytes": 41338
     },
     {
       "sourcePath": "ops/cnyos-staging-controller/specs/exact-staging-publish-reconciliation-design.md",
@@ -1189,12 +1189,12 @@
     {
       "sourcePath": "ops/cnyos-staging-controller/tests/exact-staging-release-contract.mjs",
       "path": "ops/cnyos-staging-controller/tests/exact-staging-release-contract.mjs",
-      "bytes": 21950,
-      "inputSha256": "2f49c3ae2cfec392a1cc63d8d74d3caf0b4172d847ce2cbbda92674184708377",
-      "outputSha256": "2f49c3ae2cfec392a1cc63d8d74d3caf0b4172d847ce2cbbda92674184708377",
+      "bytes": 44401,
+      "inputSha256": "31f923e8acb89ce760bc7ccf2a9e6171e1778e631c0bba05ac15deee95e2c4c1",
+      "outputSha256": "31f923e8acb89ce760bc7ccf2a9e6171e1778e631c0bba05ac15deee95e2c4c1",
       "mode": "100644",
-      "inputBytes": 21950,
-      "outputBytes": 21950
+      "inputBytes": 44401,
+      "outputBytes": 44401
     },
     {
       "sourcePath": "ops/cnyos-staging-publisher/package-lock.json",

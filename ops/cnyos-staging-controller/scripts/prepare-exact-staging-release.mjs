@@ -28,6 +28,11 @@ const binding = {
   kind: 'cnyos_exact_staging_candidate_binding',
   stagingOnly: true,
   productionAuthorized: false,
+  controller: {
+    repository: 'apisarit/cnyos-staging-deployment-control',
+    commit: config.controllerCommit,
+    workflowPath: '.github/workflows/cnyos-exact-staging-deploy-uat.yml'
+  },
   source: { commit: config.appCommit, tree: config.appTree },
   target: {
     siteId: config.target.netlifySiteId,

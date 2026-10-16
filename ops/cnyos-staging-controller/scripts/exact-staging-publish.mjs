@@ -5,7 +5,9 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import {
+  EXACT_STAGING_FUNCTION_ENVIRONMENT,
   EXACT_STAGING_PRODUCTION_DENYLIST,
+  EXACT_STAGING_SYNTHETIC_HN_PATTERN,
   EXACT_STAGING_TARGET,
   assertSecretFreeEvidence,
   loadExactStagingConfig,
@@ -17,10 +19,39 @@ import {
 const DEPLOY_ID = /^[0-9a-f]{24}$/;
 const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TERMINAL_DEPLOY_FAILURE_STATES = new Set(['error', 'failed', 'canceled', 'cancelled']);
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const RECONCILIATION_ATTEMPTS = 6;
 const RECONCILIATION_DELAY_MS = 5_000;
+const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
+const CONTROLLER_WORKFLOW_PATH = '.github/workflows/cnyos-exact-staging-deploy-uat.yml';
+const ARTIFACT_DIGEST_KEYS = Object.freeze([
+  'deployManifestSha256', 'runtimeManifestSha256',
+  'functionManifestSha256', 'functionTreeSha256'
+]);
+const RECONCILIATION_RESULTS = Object.freeze({
+  PASS: Object.freeze(['APPLIED_VERIFIED']),
+  FAIL: Object.freeze(['ATTEMPT_READY_NOT_CANONICAL', 'ATTEMPT_TERMINAL_FAILURE']),
+  UNCERTAIN: Object.freeze([
+    'CANONICAL_STATE_UNKNOWN', 'CANONICAL_DEPLOY_DRIFT',
+    'ATTEMPT_DEPLOY_ID_UNKNOWN', 'ATTEMPT_DEPLOY_STATE_UNKNOWN'
+  ])
+});
+const EVIDENCE_MANIFEST_FILES = Object.freeze([
+  'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
+  'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
+  'fixture-evidence.json', 'uat-evidence.json'
+]);
+const UAT_ROLE_SPECS = Object.freeze({
+  reception: Object.freeze(['reception', 'staff', 'reception']),
+  source_practitioner: Object.freeze(['practitioner', 'staff', 'practitioner']),
+  attending: Object.freeze(['doctor', 'staff', 'doctor']),
+  pharmacy_reviewer: Object.freeze(['pharmacy', 'staff', 'pharmacy']),
+  pharmacy_dispenser: Object.freeze(['pharmacy', 'staff', 'pharmacy']),
+  billing: Object.freeze(['billing', 'staff', 'billing']),
+  admin: Object.freeze(['viewer', 'admin', 'admin'])
+});
 
 function fail(code) {
   const error = new Error(code);
@@ -63,23 +94,139 @@ function assertFixedTarget(config) {
   }
 }
 
+function exactControllerBinding(config, controller) {
+  return controller?.repository === CONTROLLER_REPOSITORY &&
+    controller?.commit === config.controllerCommit &&
+    controller?.workflowPath === CONTROLLER_WORKFLOW_PATH;
+}
+
+function exactSourceBinding(config, source) {
+  return source?.commit === config.appCommit && source?.tree === config.appTree;
+}
+
+function exactTargetBinding(target, { requireClinicalScope = false } = {}) {
+  return target?.siteId === EXACT_STAGING_TARGET.netlifySiteId &&
+    target?.origin === EXACT_STAGING_TARGET.origin &&
+    target?.supabaseProjectRef === EXACT_STAGING_TARGET.supabaseProjectRef &&
+    (!requireClinicalScope || (
+      target?.deploymentId === EXACT_STAGING_TARGET.deploymentId &&
+      target?.clinicId === EXACT_STAGING_TARGET.clinicId
+    ));
+}
+
+function exactArtifactBinding(left, right) {
+  return ARTIFACT_DIGEST_KEYS.every(key =>
+    SHA256.test(String(left?.[key] || '')) && left?.[key] === right?.[key]);
+}
+
+function validIsoTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+}
+
+function validOutputDigest(byteLength, digest) {
+  return Number.isInteger(byteLength) && byteLength >= 0 && byteLength <= MAX_OUTPUT_BYTES &&
+    (byteLength === 0 ? digest === null : SHA256.test(String(digest || '')));
+}
+
+function validAttemptOutcome(attempt) {
+  const outcome = attempt?.cliOutcome;
+  const exitCode = attempt?.exitCode;
+  const outcomeValid = outcome === 'EXIT_ZERO' ? exitCode === 0 :
+    outcome === 'EXIT_NONZERO' ? Number.isSafeInteger(exitCode) && exitCode !== 0 :
+      ['TIMEOUT', 'SPAWN_FAILED'].includes(outcome) ? exitCode === null : false;
+  const signalValid = attempt?.signal === null ||
+    (typeof attempt?.signal === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(attempt.signal));
+  return outcomeValid && signalValid &&
+    validOutputDigest(attempt?.stdoutByteLength, attempt?.stdoutSha256) &&
+    validOutputDigest(attempt?.stderrByteLength, attempt?.stderrSha256) &&
+    typeof attempt?.rawReceiptCaptured === 'boolean' &&
+    validIsoTimestamp(attempt?.startedAt) && validIsoTimestamp(attempt?.completedAt) &&
+    Date.parse(attempt.completedAt) >= Date.parse(attempt.startedAt);
+}
+
 function assertCandidateBinding(config, binding, baseline) {
+  const expectedFunctionNames = Object.keys(EXACT_STAGING_FUNCTION_ENVIRONMENT).sort();
+  const expectedFunctionValuesSha256 = sha256(JSON.stringify(
+    Object.entries(EXACT_STAGING_FUNCTION_ENVIRONMENT)
+      .sort(([left], [right]) => left.localeCompare(right))));
+  const observedFunctionNames = binding?.functionEnvironment?.validatedVariableNames;
+  const limitsValid = plainObject(binding?.limits) &&
+    Object.keys(config.limits).every(key => binding.limits[key] === config.limits[key]) &&
+    Object.keys(binding.limits).length === Object.keys(config.limits).length;
   if (binding?.kind !== 'cnyos_exact_staging_candidate_binding' ||
+    binding?.schemaVersion !== 1 ||
     binding?.stagingOnly !== true || binding?.productionAuthorized !== false ||
-    binding?.source?.commit !== config.appCommit || binding?.source?.tree !== config.appTree ||
-    binding?.target?.siteId !== EXACT_STAGING_TARGET.netlifySiteId ||
-    binding?.target?.origin !== EXACT_STAGING_TARGET.origin ||
-    binding?.target?.supabaseProjectRef !== EXACT_STAGING_TARGET.supabaseProjectRef ||
+    !exactControllerBinding(config, binding?.controller) ||
+    !exactSourceBinding(config, binding?.source) ||
+    !exactTargetBinding(binding?.target, { requireClinicalScope: true }) ||
     binding?.rollbackBaselineDeployId !== config.rollbackDeployId ||
+    !exactSourceBinding(config, binding?.artifact?.source) ||
     !SHA256.test(String(binding?.artifact?.deployManifestSha256 || '')) ||
     !SHA256.test(String(binding?.artifact?.runtimeManifestSha256 || '')) ||
     !SHA256.test(String(binding?.artifact?.functionManifestSha256 || '')) ||
     !SHA256.test(String(binding?.artifact?.functionTreeSha256 || '')) ||
+    !Number.isSafeInteger(binding?.artifact?.runtimeFileCount) ||
+    binding.artifact.runtimeFileCount < 1 || binding.artifact.runtimeFileCount > 100_000 ||
+    !Number.isSafeInteger(binding?.artifact?.functionFileCount) ||
+    binding.artifact.functionFileCount < 1 || binding.artifact.functionFileCount > 100_000 ||
+    JSON.stringify(observedFunctionNames) !== JSON.stringify(expectedFunctionNames) ||
+    binding?.functionEnvironment?.exactValuesSha256 !== expectedFunctionValuesSha256 ||
+    binding?.functionEnvironment?.productionDenylistConfirmed !== true ||
+    binding?.functionEnvironment?.valuesSerialized !== false || !limitsValid ||
+    !validIsoTimestamp(binding?.preparedAt) ||
+    baseline?.schemaVersion !== 1 ||
     baseline?.kind !== 'cnyos_exact_staging_rollback_baseline' ||
+    baseline?.stagingOnly !== true ||
     baseline?.siteId !== EXACT_STAGING_TARGET.netlifySiteId ||
-    baseline?.deployId !== config.rollbackDeployId) {
+    baseline?.origin !== EXACT_STAGING_TARGET.origin ||
+    baseline?.deployId !== config.rollbackDeployId ||
+    baseline?.exactDeployOrigin !==
+      `https://${config.rollbackDeployId}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app` ||
+    !validIsoTimestamp(baseline?.observedAt) ||
+    Date.parse(baseline.observedAt) > Date.parse(binding.preparedAt)) {
     fail('CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
   }
+}
+
+function assertPublishChain(config, binding, baseline, intentFile, attempt) {
+  assertCandidateBinding(config, binding, baseline);
+  const intent = intentFile.value;
+  const intentHashValid = attempt?.intentSha256 === sha256(intentFile.bytes) ||
+    attempt?.intentSha256 === sha256(Buffer.from(JSON.stringify(intent)));
+  if (intent?.schemaVersion !== 1 || intent?.kind !== 'cnyos_exact_staging_publish_intent' ||
+    intent?.status !== 'READY_FOR_AUTHORIZED_STEP' || intent?.stagingOnly !== true ||
+    intent?.productionAuthorized !== false || intent?.automaticRollbackAuthorized !== false ||
+    intent?.automaticRollbackAttempted !== false ||
+    !exactControllerBinding(config, intent?.controller) ||
+    !exactSourceBinding(config, intent?.source) || !exactTargetBinding(intent?.target) ||
+    intent?.rollbackBaselineDeployId !== config.rollbackDeployId ||
+    !exactArtifactBinding(binding?.artifact, intent?.artifact) ||
+    intent?.operation?.publisher !== 'netlify-cli/23.1.2' ||
+    intent?.operation?.commandClass !== 'deploy --prod' ||
+    intent?.operation?.cliTimeoutSeconds !== 120 ||
+    intent?.operation?.processTimeoutSeconds !== 150 ||
+    intent?.operation?.retryCount !== 0 ||
+    intent?.operation?.canonicalMutationMayBeNonAtomic !== true ||
+    intent?.operation?.reconciliationRequired !== true ||
+    intent?.run?.runReferenceSha256 !== sha256(config.runReference) ||
+    !/^\d{1,30}$/.test(String(intent?.run?.workflowRunId || '')) ||
+    !validIsoTimestamp(intent?.createdAt) ||
+    attempt?.schemaVersion !== 1 ||
+    attempt?.kind !== 'cnyos_exact_staging_publish_attempt' ||
+    attempt?.status !== 'UNKNOWN_PENDING_RECONCILIATION' ||
+    attempt?.stagingOnly !== true || attempt?.productionAuthorized !== false ||
+    !exactControllerBinding(config, attempt?.controller) ||
+    !exactSourceBinding(config, attempt?.source) || !exactTargetBinding(attempt?.target) ||
+    attempt?.rollbackBaselineDeployId !== config.rollbackDeployId ||
+    attempt?.outputSerialized !== false || attempt?.outputSecretBoundaryViolated !== false ||
+    attempt?.canonicalDeployAssumed !== false || attempt?.automaticRollbackAttempted !== false ||
+    attempt?.retryCount !== 0 || !validAttemptOutcome(attempt) ||
+    Date.parse(attempt.startedAt) < Date.parse(intent.createdAt) || !intentHashValid) {
+    fail('CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID');
+  }
+  return intent;
 }
 
 export function createExactStagingPublishIntent(config, binding, baseline, {
@@ -95,6 +242,7 @@ export function createExactStagingPublishIntent(config, binding, baseline, {
     productionAuthorized: false,
     automaticRollbackAuthorized: false,
     automaticRollbackAttempted: false,
+    controller: binding.controller,
     source: Object.freeze({ commit: config.appCommit, tree: config.appTree }),
     target: Object.freeze({
       siteId: EXACT_STAGING_TARGET.netlifySiteId,
@@ -151,6 +299,7 @@ export function createExactStagingPublishAttempt(intent, result, stdoutValue, st
     status: 'UNKNOWN_PENDING_RECONCILIATION',
     stagingOnly: true,
     productionAuthorized: false,
+    controller: intent.controller,
     source: intent.source,
     target: intent.target,
     intentSha256: sha256(Buffer.from(JSON.stringify(intent))),
@@ -180,7 +329,7 @@ export async function executeExactStagingPublishAttempt(config, token, {
   cliPath = path.resolve(process.cwd(), '..', 'cnyos-staging-publisher',
     'node_modules', '.bin', 'netlify'),
   candidateDirectory = path.resolve(required(env.GITHUB_WORKSPACE,
-    'CNYOS_EXACT_STAGING_GITHUB_WORKSPACE_REQUIRED'), 'candidate-source')
+    'CNYOS_EXACT_STAGING_GITHUB_WORKSPACE_REQUIRED'))
 } = {}) {
   const secret = required(token, 'CNYOS_EXACT_STAGING_NETLIFY_TOKEN_REQUIRED');
   const bindingFile = await readJson(path.join(config.uploadDirectory, 'candidate-binding.json'),
@@ -374,17 +523,11 @@ export async function reconcileExactStagingPublish(config, token, {
     'CNYOS_EXACT_STAGING_PUBLISH_ATTEMPT_INVALID');
   const bindingFile = await readJson(path.join(config.uploadDirectory, 'candidate-binding.json'),
     'CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
-  const intent = intentFile.value;
+  const baselineFile = await readJson(path.join(config.uploadDirectory, 'rollback-baseline.json'),
+    'CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
   const attempt = attemptFile.value;
-  const intentHashValid = attempt?.intentSha256 === sha256(intentFile.bytes) ||
-    attempt?.intentSha256 === sha256(Buffer.from(JSON.stringify(intent)));
-  if (intent?.kind !== 'cnyos_exact_staging_publish_intent' ||
-    attempt?.kind !== 'cnyos_exact_staging_publish_attempt' ||
-    intent?.source?.commit !== config.appCommit || intent?.source?.tree !== config.appTree ||
-    attempt?.source?.commit !== config.appCommit || attempt?.source?.tree !== config.appTree ||
-    !intentHashValid) {
-    fail('CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID');
-  }
+  const intent = assertPublishChain(config, bindingFile.value, baselineFile.value,
+    intentFile, attempt);
 
   let receipt = null;
   const rawReceiptPath = path.join(config.privateDirectory, 'netlify-deploy-receipt.raw.json');
@@ -403,7 +546,7 @@ export async function reconcileExactStagingPublish(config, token, {
   for (let index = 0; index < attempts; index += 1) {
     try {
       observation = await observeExactStagingCanonical(config, secret,
-        bindingFile.value.artifact.runtimeManifestSha256, { fetchImpl });
+        intent.artifact.runtimeManifestSha256, { fetchImpl });
       successfulObservations += 1;
       if (observation.candidateMatches) break;
     } catch (error) {
@@ -436,6 +579,7 @@ export async function reconcileExactStagingPublish(config, token, {
     result: decision.result,
     stagingOnly: true,
     productionAuthorized: false,
+    controller: intent.controller,
     source: { commit: config.appCommit, tree: config.appTree },
     target: {
       siteId: EXACT_STAGING_TARGET.netlifySiteId,
@@ -446,6 +590,7 @@ export async function reconcileExactStagingPublish(config, token, {
     cliOutcome: attempt.cliOutcome,
     rawReceiptCaptured,
     rawReceiptParsed: receipt !== null,
+    receiptDeployId: receipt?.deployId || null,
     attemptedDeploy: attemptedDeploy ? {
       deployId: attemptedDeploy.deployId, state: attemptedDeploy.state
     } : null,
@@ -470,6 +615,239 @@ export async function reconcileExactStagingPublish(config, token, {
   return evidence;
 }
 
+function assertReconciliationEvidence(config, reconciliation, attempt) {
+  const allowedResults = RECONCILIATION_RESULTS[reconciliation?.status];
+  const receiptDeployId = reconciliation?.receiptDeployId;
+  const receiptValid = receiptDeployId === null || DEPLOY_ID.test(String(receiptDeployId || ''));
+  const attemptedDeploy = reconciliation?.attemptedDeploy;
+  const attemptedDeployValid = attemptedDeploy === null || (
+    plainObject(attemptedDeploy) && attemptedDeploy.deployId === receiptDeployId &&
+    DEPLOY_ID.test(String(attemptedDeploy.deployId || '')) &&
+    typeof attemptedDeploy.state === 'string' && attemptedDeploy.state.length > 0 &&
+    attemptedDeploy.state.length <= 64
+  );
+  const observation = reconciliation?.canonicalObservation;
+  const observationValid = observation === null || (
+    plainObject(observation) && DEPLOY_ID.test(String(observation.deployId || '')) &&
+    typeof observation.state === 'string' && observation.state.length > 0 &&
+    observation.state.length <= 64 && typeof observation.candidateMatches === 'boolean'
+  );
+  const classified = classifyExactStagingPublishReconciliation({
+    baselineDeployId: config.rollbackDeployId,
+    receiptDeployId,
+    attemptedDeployState: attemptedDeploy?.state || null,
+    observation: observation ? {
+      currentDeployId: observation.deployId,
+      candidateMatches: observation.candidateMatches
+    } : null
+  });
+  const observationFailureCodesValid = Array.isArray(reconciliation?.observationFailureCodes) &&
+    reconciliation.observationFailureCodes.every(code =>
+      typeof code === 'string' && /^[A-Z0-9_]{1,100}$/.test(code)) &&
+    new Set(reconciliation.observationFailureCodes).size ===
+      reconciliation.observationFailureCodes.length;
+  if (reconciliation?.schemaVersion !== 1 ||
+    reconciliation?.kind !== 'cnyos_exact_staging_publish_reconciliation' ||
+    reconciliation?.stagingOnly !== true || reconciliation?.productionAuthorized !== false ||
+    !exactControllerBinding(config, reconciliation?.controller) ||
+    !exactSourceBinding(config, reconciliation?.source) ||
+    !exactTargetBinding(reconciliation?.target) ||
+    reconciliation?.rollbackBaselineDeployId !== config.rollbackDeployId ||
+    !allowedResults?.includes(reconciliation?.result) ||
+    reconciliation?.status !== classified.status || reconciliation?.result !== classified.result ||
+    reconciliation?.cliOutcome !== attempt?.cliOutcome ||
+    reconciliation?.rawReceiptCaptured !== attempt?.rawReceiptCaptured ||
+    typeof reconciliation?.rawReceiptParsed !== 'boolean' || !receiptValid ||
+    reconciliation.rawReceiptParsed !== (receiptDeployId !== null) ||
+    !attemptedDeployValid || !observationValid || !observationFailureCodesValid ||
+    !Number.isInteger(reconciliation?.canonicalObservationAttempts) ||
+    reconciliation.canonicalObservationAttempts < 1 ||
+    reconciliation.canonicalObservationAttempts > RECONCILIATION_ATTEMPTS ||
+    !Number.isInteger(reconciliation?.canonicalObservationSuccesses) ||
+    reconciliation.canonicalObservationSuccesses < 0 ||
+    reconciliation.canonicalObservationSuccesses > reconciliation.canonicalObservationAttempts ||
+    reconciliation?.automaticRollbackAuthorized !== false ||
+    reconciliation?.automaticRollbackAttempted !== false ||
+    reconciliation?.retryAuthorized !== false ||
+    !validIsoTimestamp(reconciliation?.reconciledAt)) {
+    fail('CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_INVALID');
+  }
+  if (reconciliation.status === 'PASS') {
+    if (!DEPLOY_ID.test(String(reconciliation.normalizedDeployId || '')) ||
+      reconciliation.normalizedDeployId === config.rollbackDeployId ||
+      reconciliation?.canonicalObservation?.deployId !== reconciliation.normalizedDeployId ||
+      reconciliation?.canonicalObservation?.state !== 'ready' ||
+      reconciliation?.canonicalObservation?.candidateMatches !== true ||
+      reconciliation.canonicalObservationSuccesses < 1) {
+      fail('CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_INVALID');
+    }
+    return reconciliation.normalizedDeployId;
+  }
+  if (reconciliation.normalizedDeployId !== null) {
+    fail('CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_INVALID');
+  }
+  return null;
+}
+
+function assertDeployReceiptEvidence(config, receipt, expectedDeployId) {
+  let normalized;
+  try { normalized = parseNetlifyDeployReceipt(receipt, config); }
+  catch { fail('CNYOS_EXACT_STAGING_DEPLOY_RECEIPT_INVALID'); }
+  if (receipt?.schemaVersion !== 1 || receipt?.kind !== 'cnyos_exact_staging_deploy_receipt' ||
+    receipt?.stagingOnly !== true || !exactSourceBinding(config, receipt?.source) ||
+    receipt?.siteId !== EXACT_STAGING_TARGET.netlifySiteId ||
+    receipt?.canonicalOrigin !== EXACT_STAGING_TARGET.origin ||
+    receipt?.exactDeployOrigin !== normalized.exactDeployOrigin ||
+    normalized.deployId !== expectedDeployId) {
+    fail('CNYOS_EXACT_STAGING_DEPLOY_RECEIPT_INVALID');
+  }
+  return normalized;
+}
+
+function assertUatEvidence(config, uat, receipt, expectedDeployId) {
+  if (uat?.schemaVersion !== 1 ||
+    uat?.kind !== 'cnyos_exact_staging_role_separated_uat' ||
+    !['PASS', 'FAIL', 'UNCERTAIN'].includes(uat?.status) ||
+    uat?.stagingOnly !== true || uat?.productionAuthorized !== false ||
+    !exactControllerBinding(config, uat?.controller) ||
+    !exactSourceBinding(config, uat?.source)) {
+    fail('CNYOS_EXACT_STAGING_UAT_EVIDENCE_INVALID');
+  }
+  if (uat.status === 'PASS') {
+    const roleKeys = Object.keys(UAT_ROLE_SPECS);
+    const actorKeys = plainObject(uat?.journey?.actorIds)
+      ? Object.keys(uat.journey.actorIds).sort() : [];
+    const actorIds = roleKeys.map(key => uat?.journey?.actorIds?.[key]);
+    const browser = uat?.journey?.opdBrowserProof;
+    const expectedPerContext = [
+      { contextOrdinal: 1, writes: 1 },
+      { contextOrdinal: 2, writes: 1 },
+      { contextOrdinal: 3, writes: 0 }
+    ];
+    const expectedWriteRecords = [
+      { ordinal: 1, contextOrdinal: 1, rpc: 'save_ttm_opd_history', reservedBeforeFetch: true },
+      { ordinal: 2, contextOrdinal: 2, rpc: 'save_ttm_opd_history', reservedBeforeFetch: true }
+    ];
+    const started = Date.parse(uat?.startedAt);
+    const completed = Date.parse(uat?.completedAt);
+    const expectedRunSuffix = config.runId.slice(-8);
+    const expectedHn = new RegExp(EXACT_STAGING_SYNTHETIC_HN_PATTERN);
+    assertDeployReceiptEvidence(config, uat.deployment, expectedDeployId);
+    if (!exactTargetBinding(uat?.target, { requireClinicalScope: false }) ||
+      uat?.target?.clinicId !== EXACT_STAGING_TARGET.clinicId ||
+      uat?.journey?.syntheticOnly !== true || uat?.journey?.realPhiUsed !== false ||
+      uat?.journey?.runId !== config.runId ||
+      JSON.stringify(actorKeys) !== JSON.stringify([...roleKeys].sort()) ||
+      actorIds.some(value => !UUID.test(String(value || ''))) ||
+      new Set(actorIds).size !== roleKeys.length ||
+      !UUID.test(String(uat?.journey?.patient?.id || '')) ||
+      !expectedHn.test(String(uat?.journey?.patient?.hn || '')) ||
+      uat?.journey?.patient?.syntheticRunSuffix !== expectedRunSuffix ||
+      uat?.journey?.patient?.hnGeneratedByServer !== true ||
+      uat?.journey?.patient?.clinicId !== EXACT_STAGING_TARGET.clinicId ||
+      uat?.journey?.patient?.paymentRight !== 'SYNTHETIC-E2E' ||
+      uat?.journey?.patient?.realIdentifiersAbsent !== true ||
+      browser?.contexts !== 3 || browser?.saveReloadAmend !== true ||
+      browser?.writes !== config.limits.browserOpdWrites ||
+      browser?.writeLedger?.limit !== config.limits.browserOpdWrites ||
+      browser?.writeLedger?.dispatched !== config.limits.browserOpdWrites ||
+      browser?.writeLedger?.contextCount !== 3 ||
+      !Array.isArray(browser?.writeLedger?.records) ||
+      JSON.stringify(browser.writeLedger.records) !== JSON.stringify(expectedWriteRecords) ||
+      !Array.isArray(browser?.writeLedger?.perContext) ||
+      JSON.stringify(browser.writeLedger.perContext) !== JSON.stringify(expectedPerContext) ||
+      uat?.journey?.consult?.status !== 'completed' ||
+      uat?.journey?.admission?.status !== 'admitted' ||
+      uat?.journey?.pharmacy?.separated !== true ||
+      uat?.journey?.pharmacy?.reviewerActorId !== uat?.journey?.actorIds?.pharmacy_reviewer ||
+      uat?.journey?.pharmacy?.dispenserActorId !== uat?.journey?.actorIds?.pharmacy_dispenser ||
+      uat?.journey?.billing?.grandTotal !== 800 ||
+      uat?.journey?.billing?.invoiceStatus !== 'paid' ||
+      uat?.journey?.billing?.actorId !== uat?.journey?.actorIds?.billing ||
+      uat?.journey?.admin?.actorId !== uat?.journey?.actorIds?.admin ||
+      uat?.journey?.admin?.separatelyAuthenticated !== true ||
+      uat?.mutationBudget?.limit !== config.limits.totalMutations ||
+      !Number.isInteger(uat?.mutationBudget?.dispatched) ||
+      uat.mutationBudget.dispatched < 1 || uat.mutationBudget.dispatched > config.limits.totalMutations ||
+      uat?.mutationBudget?.writeRetries !== 0 ||
+      !Array.isArray(uat?.mutationBudget?.records) ||
+      uat.mutationBudget.records.length !== uat.mutationBudget.dispatched ||
+      !validIsoTimestamp(uat?.startedAt) || !validIsoTimestamp(uat?.completedAt) ||
+      completed < started || completed - started > config.limits.uatTimeoutMs ||
+      uat.deployment.deployId !== receipt.deployId) {
+      fail('CNYOS_EXACT_STAGING_UAT_EVIDENCE_INVALID');
+    }
+  } else if (uat?.deployReceiptCaptured !== true || uat?.deployId !== expectedDeployId) {
+    fail('CNYOS_EXACT_STAGING_UAT_EVIDENCE_INVALID');
+  }
+}
+
+function assertFixtureEvidence(config, fixture, uat, expectedDeployId) {
+  const accountEntries = plainObject(fixture?.accounts) ? Object.entries(fixture.accounts) : [];
+  const expectedRoleKeys = Object.keys(UAT_ROLE_SPECS).sort();
+  const accountIds = accountEntries.map(([, account]) => account?.userId);
+  const limitsValid = plainObject(fixture?.limits) &&
+    Object.keys(config.limits).every(key => fixture.limits[key] === config.limits[key]) &&
+    Object.keys(fixture.limits).length === Object.keys(config.limits).length;
+  const accountsValid = accountEntries.length === expectedRoleKeys.length &&
+    JSON.stringify(accountEntries.map(([key]) => key).sort()) === JSON.stringify(expectedRoleKeys) &&
+    accountEntries.every(([key, account]) => {
+      const roles = UAT_ROLE_SPECS[key];
+      return roles && UUID.test(String(account?.userId || '')) &&
+        SHA256.test(String(account?.emailSha256 || '')) &&
+        account?.profileRole === roles[0] && account?.systemRole === roles[1] &&
+        account?.clinicRole === roles[2] && account?.syntheticMarkerVerified === true &&
+        account?.authenticatedSessionVerified === true &&
+        uat?.journey?.actorIds?.[key] === account.userId;
+    });
+  if (fixture?.schemaVersion !== 1 ||
+    fixture?.kind !== 'cnyos_exact_staging_synthetic_fixture' || fixture?.status !== 'PASS' ||
+    fixture?.syntheticOnly !== true || fixture?.realPhiUsed !== false ||
+    !exactControllerBinding(config, fixture?.controller) ||
+    !exactSourceBinding(config, fixture?.source) || fixture?.deployId !== expectedDeployId ||
+    fixture?.runId !== config.runId || fixture?.distinctAccountCount !== config.limits.authUsers ||
+    !accountsValid || new Set(accountIds).size !== config.limits.authUsers ||
+    fixture?.patient?.realIdentifiersAbsent !== true ||
+    fixture?.patient?.id !== uat?.journey?.patient?.id ||
+    fixture?.patient?.hn !== uat?.journey?.patient?.hn ||
+    fixture?.patient?.syntheticRunSuffix !== uat?.journey?.patient?.syntheticRunSuffix ||
+    fixture?.patient?.hnGeneratedByServer !== true ||
+    fixture?.patient?.clinicId !== EXACT_STAGING_TARGET.clinicId ||
+    fixture?.patient?.paymentRight !== 'SYNTHETIC-E2E' ||
+    !limitsValid) {
+    fail('CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID');
+  }
+}
+
+function assertEvidenceManifest(config, manifest, files, expectedDeployId) {
+  if (manifest?.schemaVersion !== 1 ||
+    manifest?.kind !== 'cnyos_exact_staging_evidence_manifest' || manifest?.status !== 'PASS' ||
+    manifest?.stagingOnly !== true || manifest?.productionAuthorized !== false ||
+    !exactControllerBinding(config, manifest?.controller) ||
+    !exactSourceBinding(config, manifest?.source) || manifest?.deployId !== expectedDeployId ||
+    manifest?.rollbackDeployId !== config.rollbackDeployId || !Array.isArray(manifest?.evidence) ||
+    manifest.evidence.length !== EVIDENCE_MANIFEST_FILES.length) {
+    fail('CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID');
+  }
+  const entries = new Map();
+  for (const entry of manifest.evidence) {
+    if (!plainObject(entry) || typeof entry.name !== 'string' || entries.has(entry.name) ||
+      !EVIDENCE_MANIFEST_FILES.includes(entry.name) || !Number.isInteger(entry.size) ||
+      entry.size < 2 || !SHA256.test(String(entry.sha256 || ''))) {
+      fail('CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID');
+    }
+    entries.set(entry.name, entry);
+  }
+  for (const name of EVIDENCE_MANIFEST_FILES) {
+    const observed = files.get(name);
+    const declared = entries.get(name);
+    if (!observed || !declared || declared.size !== observed.size ||
+      declared.sha256 !== observed.sha256) {
+      fail('CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID');
+    }
+  }
+}
+
 function expectedEvidenceNames(reconciliation, uat) {
   const base = [
     'candidate-binding.json', 'publish-attempt.json', 'publish-intent.json',
@@ -491,18 +869,50 @@ export function deriveExactStagingTerminalStatus(reconciliationStatus, uatStatus
 }
 
 export async function finalizeExactStagingEvidence(config, { now = () => new Date().toISOString() } = {}) {
+  assertFixedTarget(config);
+  const bindingFile = await readJson(path.join(config.uploadDirectory, 'candidate-binding.json'),
+    'CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
+  const baselineFile = await readJson(path.join(config.uploadDirectory, 'rollback-baseline.json'),
+    'CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID');
+  const intentFile = await readJson(path.join(config.uploadDirectory, 'publish-intent.json'),
+    'CNYOS_EXACT_STAGING_PUBLISH_INTENT_INVALID');
+  const attemptFile = await readJson(path.join(config.uploadDirectory, 'publish-attempt.json'),
+    'CNYOS_EXACT_STAGING_PUBLISH_ATTEMPT_INVALID');
+  assertPublishChain(config, bindingFile.value, baselineFile.value, intentFile, attemptFile.value);
   const reconciliationFile = await readJson(
     path.join(config.uploadDirectory, 'publish-reconciliation.json'),
     'CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_MISSING');
   const reconciliation = reconciliationFile.value;
-  const uatFile = await readJson(path.join(config.uploadDirectory, 'uat-evidence.json'),
-    'CNYOS_EXACT_STAGING_UAT_EVIDENCE_INVALID', { optional: true }).catch(() => null);
-  const uat = uatFile?.value || null;
+  const reconciledDeployId = assertReconciliationEvidence(config, reconciliation, attemptFile.value);
+  let receipt = null;
+  let uat = null;
+  let fixture = null;
+  let manifest = null;
+  if (reconciliation.status === 'PASS') {
+    const receiptFile = await readJson(path.join(config.uploadDirectory, 'deploy-receipt.json'),
+      'CNYOS_EXACT_STAGING_DEPLOY_RECEIPT_INVALID');
+    receipt = receiptFile.value;
+    assertDeployReceiptEvidence(config, receipt, reconciledDeployId);
+    const uatFile = await readJson(path.join(config.uploadDirectory, 'uat-evidence.json'),
+      'CNYOS_EXACT_STAGING_UAT_EVIDENCE_INVALID');
+    uat = uatFile.value;
+    assertUatEvidence(config, uat, receipt, reconciledDeployId);
+    if (uat.status === 'PASS') {
+      const fixtureFile = await readJson(path.join(config.uploadDirectory, 'fixture-evidence.json'),
+        'CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID');
+      fixture = fixtureFile.value;
+      assertFixtureEvidence(config, fixture, uat, reconciledDeployId);
+      const manifestFile = await readJson(path.join(config.uploadDirectory,
+        'evidence-manifest.json'), 'CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID');
+      manifest = manifestFile.value;
+    }
+  }
   const expected = expectedEvidenceNames(reconciliation, uat);
   const actual = (await fs.readdir(config.uploadDirectory))
     .filter(name => name !== 'terminal-evidence.json').sort();
   let evidenceSetValid = JSON.stringify(actual) === JSON.stringify(expected);
   const entries = [];
+  const observedFiles = new Map();
   for (const name of actual) {
     const filename = path.join(config.uploadDirectory, name);
     const stat = await fs.lstat(filename);
@@ -514,8 +924,11 @@ export async function finalizeExactStagingEvidence(config, { now = () => new Dat
       catch { jsonValid = false; }
     }
     if (!jsonValid) evidenceSetValid = false;
-    entries.push({ name, size: bytes.length, sha256: sha256(bytes), jsonValid });
+    const entry = { name, size: bytes.length, sha256: sha256(bytes), jsonValid };
+    entries.push(entry);
+    observedFiles.set(name, entry);
   }
+  if (manifest) assertEvidenceManifest(config, manifest, observedFiles, reconciledDeployId);
   const status = deriveExactStagingTerminalStatus(reconciliation.status, uat?.status || null,
     evidenceSetValid);
   const terminal = {
@@ -524,6 +937,7 @@ export async function finalizeExactStagingEvidence(config, { now = () => new Dat
     status,
     stagingOnly: true,
     productionAuthorized: false,
+    controller: reconciliation.controller,
     source: { commit: config.appCommit, tree: config.appTree },
     target: { siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin },
     publishReconciliation: {

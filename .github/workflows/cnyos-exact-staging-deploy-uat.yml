@@ -3,6 +3,10 @@ name: Exact CNYOS staging deploy and role-separated UAT
 on:
   workflow_dispatch:
     inputs:
+      controller_commit:
+        description: Exact approved 40-character controller main commit
+        required: true
+        type: string
       app_commit:
         description: Exact reviewed lowercase 40-character application commit
         required: true
@@ -23,6 +27,7 @@ on:
 # This workflow is a staging-only publisher. It cannot accept a site, origin,
 # Supabase project, clinic or deployment class from dispatch input.
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -34,27 +39,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Reject every non-protected or repeated dispatch
+      - name: Reject every stale-controller or repeated dispatch
         shell: bash
+        env:
+          CNYOS_EXPECTED_CONTROLLER_COMMIT: ${{ inputs.controller_commit }}
         run: |
           set -Eeuo pipefail
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test "$GITHUB_REPOSITORY" = "apisarit/cnyos-staging-deployment-control"
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_ACTOR" = "apisarit"
+          test "$GITHUB_ACTOR_ID" = "216305243"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_ACTOR"
           test "$GITHUB_RUN_ATTEMPT" = "1"
+          [[ "$CNYOS_EXPECTED_CONTROLLER_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$CNYOS_EXPECTED_CONTROLLER_COMMIT" = "$GITHUB_SHA"
           test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
           test "$GITHUB_WORKFLOW_REF" = "apisarit/cnyos-staging-deployment-control/.github/workflows/cnyos-exact-staging-deploy-uat.yml@refs/heads/main"
           test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
           test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
 
-  exact-staging-deploy-uat:
+  build_candidate_artifact:
     needs: admit-controller-runtime
-    environment:
-      name: cnyos-staging-publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
+      CNYOS_EXPECTED_CONTROLLER_COMMIT: ${{ inputs.controller_commit }}
       CNYOS_EXPECTED_SOURCE_COMMIT: ${{ inputs.app_commit }}
       CNYOS_EXPECTED_SOURCE_TREE: ${{ inputs.app_tree }}
       CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: ${{ inputs.rollback_deploy_id }}
@@ -62,20 +72,20 @@ jobs:
       CNYOS_FIXED_STAGING_SITE_ID: 887e058b-6e13-461f-b3c7-ae096b7046fe
       CNYOS_FIXED_STAGING_ORIGIN: https://cnyos-clinical-staging.netlify.app
       CNYOS_FIXED_STAGING_PROJECT_REF: hsmnjwxurlmsizndjlun
-      XDG_CONFIG_HOME: ${{ runner.temp }}/cnyos-netlify-config
-      XDG_CACHE_HOME: ${{ runner.temp }}/cnyos-netlify-cache
+    outputs:
+      artifact_id: ${{ steps.upload_candidate.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload_candidate.outputs.artifact-digest }}
     steps:
-      - name: Initialize private paths without creating ambient inputs
+      - name: Initialize unprivileged candidate paths
         shell: bash
         run: |
           set -Eeuo pipefail
-          printf 'CNYOS_EXACT_STAGING_WORK_DIRECTORY=%s/cnyos-exact-staging-%s\n' \
+          printf 'CNYOS_EXACT_STAGING_WORK_DIRECTORY=%s/cnyos-candidate-work-%s\n' \
             "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}" >> "${GITHUB_ENV:?}"
           printf 'CNYOS_STAGING_ARTIFACT_DIRECTORY=%s/cnyos-exact-artifact-%s\n' \
             "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}" >> "${GITHUB_ENV:?}"
-          mkdir -m 700 "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 
-      - name: Checkout exact protected controller commit
+      - name: Checkout exact controller commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           ref: ${{ github.sha }}
@@ -97,15 +107,19 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Verify protected controller and fixed target admission
+      - name: Verify exact controller and fixed target admission
         shell: bash
         run: |
           set -Eeuo pipefail
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test "$GITHUB_REPOSITORY" = "apisarit/cnyos-staging-deployment-control"
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$GITHUB_REF_PROTECTED" = "true"
+          test "$GITHUB_ACTOR" = "apisarit"
+          test "$GITHUB_ACTOR_ID" = "216305243"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_ACTOR"
           test "$GITHUB_RUN_ATTEMPT" = "1"
+          [[ "$CNYOS_EXPECTED_CONTROLLER_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$CNYOS_EXPECTED_CONTROLLER_COMMIT" = "$GITHUB_SHA"
           test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$CNYOS_FIXED_STAGING_SITE_ID" = "887e058b-6e13-461f-b3c7-ae096b7046fe"
@@ -119,31 +133,33 @@ jobs:
           test "$(git -C candidate-source rev-parse 'HEAD^{tree}')" = "$CNYOS_EXPECTED_SOURCE_TREE"
           test -z "$(git -C candidate-source status --porcelain=v1 --untracked-files=all)"
 
-      - name: Install locked controller and application dependencies
+      - name: Install locked application dependencies without ambient workflow channels
         shell: bash
         run: |
           set -Eeuo pipefail
-          npm --prefix ops/cnyos-staging-controller ci --ignore-scripts
-          npm --prefix ops/cnyos-staging-publisher ci --ignore-scripts
-          publisher_version="$(ops/cnyos-staging-publisher/node_modules/.bin/netlify --version)"
-          case "$publisher_version" in
-            netlify-cli/23.1.2\ *) ;;
-            *) exit 1 ;;
-          esac
-          npm --prefix candidate-source ci --ignore-scripts
+          env -i \
+            CI=true \
+            HOME="${HOME:?}" \
+            PATH="${PATH:?}" \
+            TMPDIR="${RUNNER_TEMP:?}" \
+            npm --prefix candidate-source ci --ignore-scripts
 
       - name: Run exact candidate contracts before credentials are scoped
         working-directory: candidate-source
-        run: npm run check
-
-      - name: Install locked Chromium runtime
-        working-directory: ops/cnyos-staging-controller
-        run: node_modules/.bin/playwright install --with-deps chromium
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          env -i \
+            CI=true \
+            HOME="${HOME:?}" \
+            PATH="${PATH:?}" \
+            TMPDIR="${RUNNER_TEMP:?}" \
+            npm run check
 
       - name: Build exact connected staging artifact with publishable key only
         shell: bash
         env:
-          CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ vars.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           set -Eeuo pipefail
           artifact="${CNYOS_STAGING_ARTIFACT_DIRECTORY:?}"
@@ -155,19 +171,29 @@ jobs:
           build_time="$(git -C candidate-source show -s --format=%cI HEAD)"
           (
             cd candidate-source
-            CONTEXT=production \
-            URL=https://cnyos-clinical-staging.netlify.app \
-            CLINICAL_OS_BUILD_TIMESTAMP="$build_time" \
-            CLINICAL_OS_STAGING_DEPLOYMENT=true \
-            CLINICAL_OS_ALLOW_STAGING_DATABASE=true \
-            CLINICAL_OS_STAGING_DATABASE_ACK=STAGING_ONLY \
-            CLINICAL_OS_TENANT_CONFIG_PATH="$runtime_config" \
-            CLINICAL_OS_PRODUCTION_CONFIG_PATH=config/tenant.chananya.json \
-            CLINICAL_OS_SOURCE_COMMIT="$CNYOS_EXPECTED_SOURCE_COMMIT" \
-            CLINICAL_OS_SOURCE_TREE="$source_tree" \
-            CLINICAL_OS_REQUIRE_SOURCE_COMMIT=true \
-            npm run build:staging-artifact
-            node scripts/materialize-staging-functions.mjs \
+            env -i \
+              CI=true \
+              HOME="${HOME:?}" \
+              PATH="${PATH:?}" \
+              TMPDIR="${RUNNER_TEMP:?}" \
+              CONTEXT=production \
+              URL=https://cnyos-clinical-staging.netlify.app \
+              CLINICAL_OS_BUILD_TIMESTAMP="$build_time" \
+              CLINICAL_OS_STAGING_DEPLOYMENT=true \
+              CLINICAL_OS_ALLOW_STAGING_DATABASE=true \
+              CLINICAL_OS_STAGING_DATABASE_ACK=STAGING_ONLY \
+              CLINICAL_OS_TENANT_CONFIG_PATH="$runtime_config" \
+              CLINICAL_OS_PRODUCTION_CONFIG_PATH=config/tenant.chananya.json \
+              CLINICAL_OS_SOURCE_COMMIT="$CNYOS_EXPECTED_SOURCE_COMMIT" \
+              CLINICAL_OS_SOURCE_TREE="$source_tree" \
+              CLINICAL_OS_REQUIRE_SOURCE_COMMIT=true \
+              npm run build:staging-artifact
+            env -i \
+              CI=true \
+              HOME="${HOME:?}" \
+              PATH="${PATH:?}" \
+              TMPDIR="${RUNNER_TEMP:?}" \
+              node scripts/materialize-staging-functions.mjs \
               --ref "$CNYOS_EXPECTED_SOURCE_COMMIT" \
               --output artifacts/controller-release/functions \
               --manifest artifacts/controller-release/function-input-manifest.json
@@ -180,6 +206,174 @@ jobs:
           git -C candidate-source diff --cached --exit-code
           test "$(git -C candidate-source rev-parse HEAD)" = "$CNYOS_EXPECTED_SOURCE_COMMIT"
           test "$(git -C candidate-source rev-parse 'HEAD^{tree}')" = "$CNYOS_EXPECTED_SOURCE_TREE"
+
+      - name: Preflight the closed-world artifact without protected credentials
+        working-directory: ops/cnyos-staging-controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import {
+            loadExactStagingConfig,
+            verifyExactStagingArtifact
+          } from './scripts/exact-staging-release.mjs';
+          const result = await verifyExactStagingArtifact(loadExactStagingConfig());
+          process.stdout.write(`Closed-world candidate ${result.artifact.source.commit}\n`);
+          NODE
+
+      - name: Upload exact closed-world candidate artifact
+        id: upload_candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cnyos-exact-staging-candidate-${{ github.run_id }}
+          path: ${{ runner.temp }}/cnyos-exact-artifact-${{ github.run_id }}/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+
+  exact-staging-deploy-uat:
+    needs:
+      - admit-controller-runtime
+      - build_candidate_artifact
+    environment:
+      name: cnyos-staging-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CNYOS_EXPECTED_CONTROLLER_COMMIT: ${{ inputs.controller_commit }}
+      CNYOS_EXPECTED_SOURCE_COMMIT: ${{ inputs.app_commit }}
+      CNYOS_EXPECTED_SOURCE_TREE: ${{ inputs.app_tree }}
+      CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: ${{ inputs.rollback_deploy_id }}
+      CNYOS_STAGING_RUN_REFERENCE: ${{ inputs.run_reference }}
+      CNYOS_FIXED_STAGING_SITE_ID: 887e058b-6e13-461f-b3c7-ae096b7046fe
+      CNYOS_FIXED_STAGING_ORIGIN: https://cnyos-clinical-staging.netlify.app
+      CNYOS_FIXED_STAGING_PROJECT_REF: hsmnjwxurlmsizndjlun
+    steps:
+      - name: Initialize fresh protected-runner paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf 'CNYOS_EXACT_STAGING_WORK_DIRECTORY=%s/cnyos-exact-staging-%s\n' \
+            "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}" >> "${GITHUB_ENV:?}"
+          printf 'CNYOS_STAGING_ARTIFACT_DIRECTORY=%s/cnyos-exact-artifact-%s\n' \
+            "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}" >> "${GITHUB_ENV:?}"
+          printf 'XDG_CONFIG_HOME=%s/cnyos-netlify-config\n' \
+            "${RUNNER_TEMP:?}" >> "${GITHUB_ENV:?}"
+          printf 'XDG_CACHE_HOME=%s/cnyos-netlify-cache\n' \
+            "${RUNNER_TEMP:?}" >> "${GITHUB_ENV:?}"
+          mkdir -m 700 \
+            "${RUNNER_TEMP:?}/cnyos-netlify-config" \
+            "${RUNNER_TEMP:?}/cnyos-netlify-cache"
+
+      - name: Checkout exact controller commit on the fresh protected runner
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.controller_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Node.js 24 on the fresh protected runner
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Re-attest exact controller and upstream artifact identity
+        shell: bash
+        env:
+          CNYOS_CANDIDATE_ARTIFACT_ID: ${{ needs.build_candidate_artifact.outputs.artifact_id }}
+          CNYOS_CANDIDATE_ARTIFACT_DIGEST: ${{ needs.build_candidate_artifact.outputs.artifact_digest }}
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "apisarit/cnyos-staging-deployment-control"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_ACTOR" = "apisarit"
+          test "$GITHUB_ACTOR_ID" = "216305243"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_ACTOR"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$CNYOS_EXPECTED_CONTROLLER_COMMIT" = "$GITHUB_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          [[ "$CNYOS_CANDIDATE_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$CNYOS_CANDIDATE_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+
+      - name: Install locked controller tooling from the restored commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          env -i \
+            CI=true \
+            HOME="${HOME:?}" \
+            PATH="${PATH:?}" \
+            TMPDIR="${RUNNER_TEMP:?}" \
+            npm --prefix ops/cnyos-staging-controller ci --ignore-scripts
+          env -i \
+            CI=true \
+            HOME="${HOME:?}" \
+            PATH="${PATH:?}" \
+            TMPDIR="${RUNNER_TEMP:?}" \
+            npm --prefix ops/cnyos-staging-publisher ci --ignore-scripts
+          publisher_version="$(ops/cnyos-staging-publisher/node_modules/.bin/netlify --version)"
+          case "$publisher_version" in
+            netlify-cli/23.1.2\ *) ;;
+            *) exit 1 ;;
+          esac
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install locked Chromium runtime from restored controller
+        working-directory: ops/cnyos-staging-controller
+        run: node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Download exact candidate artifact onto the fresh protected runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.build_candidate_artifact.outputs.artifact_id }}
+          path: ${{ runner.temp }}/cnyos-exact-artifact-${{ github.run_id }}
+          merge-multiple: true
+
+      - name: Fail closed on the immutable artifact transport digest
+        shell: bash
+        env:
+          CNYOS_GITHUB_TOKEN: ${{ github.token }}
+          CNYOS_CANDIDATE_ARTIFACT_ID: ${{ needs.build_candidate_artifact.outputs.artifact_id }}
+          CNYOS_CANDIDATE_ARTIFACT_DIGEST: ${{ needs.build_candidate_artifact.outputs.artifact_digest }}
+        run: |
+          set -Eeuo pipefail
+          archive="${RUNNER_TEMP:?}/cnyos-exact-artifact-${GITHUB_RUN_ID:?}.zip"
+          trap 'rm -f -- "$archive"' EXIT
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${CNYOS_GITHUB_TOKEN:?}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY:?}/actions/artifacts/${CNYOS_CANDIDATE_ARTIFACT_ID:?}/zip" \
+            --output "$archive"
+          observed_digest="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$observed_digest" = "$CNYOS_CANDIDATE_ARTIFACT_DIGEST"
+
+      - name: Verify downloaded closed-world artifact before any publish or UAT secret
+        working-directory: ops/cnyos-staging-controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          node --input-type=module <<'NODE'
+          import {
+            loadExactStagingConfig,
+            verifyExactStagingArtifact
+          } from './scripts/exact-staging-release.mjs';
+          const result = await verifyExactStagingArtifact(loadExactStagingConfig());
+          process.stdout.write(`Verified downloaded candidate ${result.artifact.source.commit}\n`);
+          NODE
 
       - name: Verify artifact and capture exact rollback baseline
         working-directory: ops/cnyos-staging-controller
@@ -208,7 +402,7 @@ jobs:
         env:
           CNYOS_STAGING_NETLIFY_AUTH_TOKEN: ${{ secrets.CNYOS_STAGING_NETLIFY_AUTH_TOKEN }}
           CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
-          CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ vars.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY }}
           CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD: ${{ secrets.CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD }}
         run: node scripts/run-exact-staging-clinical-uat.mjs
 
