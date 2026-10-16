@@ -231,9 +231,19 @@ controller steps:
 Each isolated live-GitHub boundary job maps only its job-scoped `github.token`.
 The jobs declare only `contents: read` and `pull-requests: read`, request no OIDC
 identity, use no Environment or separately provisioned token, issue only
-fixed-origin `GET` requests, and emit no credential value. The source repository
-must remain publicly readable; a future private-source design requires a
-separately reviewed GitHub App boundary and is not authorized by this template.
+fixed-origin `GET` requests, and emit no credential value. Those generic
+boundary jobs still require publicly readable source or a separately reviewed
+GitHub App boundary.
+
+The manual exact-staging workflow has one narrower private-source exception. Its
+unprotected producer may pass repository secret `CNYOS_APP_SOURCE_READ_TOKEN`
+only to the pinned `actions/checkout` step for
+`apisarit/chananya-clinical-wellness-os`. The token must be short-lived,
+fine-grained, limited to that one repository and `Contents: Read`, and checkout
+must set `persist-credentials: false`. Contract tests reject any second use,
+shell/environment exposure, protected-job use, or substitution with a staging
+publish/database secret. A one-repository GitHub App installation token remains
+the preferred durable replacement.
 
 The protected repository variable `CNYOS_PRIVATE_DRAFT_ACCESS_BOUNDARY_URL`
 must equal the exact reviewed origin pinned in `controller-policy.json`. The

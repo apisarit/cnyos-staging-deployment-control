@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import {
+  EXACT_STAGING_SYNTHETIC_HN_PATTERN,
   EXACT_STAGING_TARGET,
   ExactStagingReleaseError,
   assertScopedOpdWriteBody,
@@ -18,6 +19,8 @@ import {
 } from './exact-staging-release.mjs';
 
 const MAX_BODY = 2 * 1024 * 1024;
+const CONTROLLER_REPOSITORY = 'apisarit/cnyos-staging-deployment-control';
+const CONTROLLER_WORKFLOW_PATH = '.github/workflows/cnyos-exact-staging-deploy-uat.yml';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLE_SPECS = Object.freeze([
   Object.freeze({ key: 'reception', profileRole: 'reception', systemRole: 'staff', clinicRole: 'reception' }),
@@ -49,6 +52,19 @@ const READ_ONLY_BROWSER_RPCS = new Set([
   'prescription_dispensing_healthcheck', 'production_execution_healthcheck',
   'quality_release_healthcheck', 'search_clinical_outcomes', 'search_patients_for_checkin'
 ]);
+const READ_ONLY_UAT_RPCS = new Set([
+  'get_clinical_consult_request',
+  'get_ipd_admission'
+]);
+const AUDIT_METADATA_KEYS = Object.freeze({
+  create_clinical_consult_request: Object.freeze(['request_type', 'status', 'version']),
+  transition_clinical_consult_request: Object.freeze([
+    'from_status', 'request_type', 'to_status', 'version'
+  ]),
+  create_ipd_admission_request: Object.freeze(['action', 'status', 'version']),
+  transition_ipd_admission: Object.freeze(['action', 'from_status', 'status', 'version']),
+  append_ipd_clinical_entry: Object.freeze(['action', 'entry_type', 'status', 'version'])
+});
 
 function fail(code, options) {
   throw new ExactStagingReleaseError(code, options);
@@ -68,6 +84,14 @@ function first(value, code) {
 
 function randomKey() {
   return crypto.randomUUID();
+}
+
+function controllerEvidence(config) {
+  return Object.freeze({
+    repository: CONTROLLER_REPOSITORY,
+    commit: config.controllerCommit,
+    workflowPath: CONTROLLER_WORKFLOW_PATH
+  });
 }
 
 class MutationBudget {
@@ -157,6 +181,198 @@ async function rpc({ publishableKey, token, budget, role }, name, body) {
   return requestJson(supabase(`/rest/v1/rpc/${name}`), {
     method: 'POST', headers: userHeaders(publishableKey, token, true), body,
     expected: [200], mutation: record
+  });
+}
+
+async function readRpc({ publishableKey, token }, name, body) {
+  if (!READ_ONLY_UAT_RPCS.has(name)) fail('CNYOS_EXACT_STAGING_READ_RPC_NOT_ALLOWED');
+  return requestJson(supabase(`/rest/v1/rpc/${name}`), {
+    method: 'POST', headers: userHeaders(publishableKey, token, true), body,
+    expected: [200]
+  });
+}
+
+function consultSnapshot(value) {
+  const detail = first(value, 'CNYOS_EXACT_STAGING_CONSULT_DETAIL_INVALID');
+  const request = detail.request;
+  if (!request || !Array.isArray(detail.events)) {
+    fail('CNYOS_EXACT_STAGING_CONSULT_DETAIL_INVALID');
+  }
+  return {
+    requestId: request.request_id,
+    status: request.status,
+    version: request.version,
+    assignedReceiverId: request.assigned_receiver_id,
+    clinicalResponse: request.clinical_response,
+    events: detail.events.map(event => ({
+      eventId: event.event_id,
+      eventType: event.event_type,
+      fromStatus: event.from_status,
+      toStatus: event.to_status,
+      resultingVersion: event.resulting_version,
+      actorId: event.actor_id
+    }))
+  };
+}
+
+function ipdSnapshot(value) {
+  const detail = first(value, 'CNYOS_EXACT_STAGING_IPD_DETAIL_INVALID');
+  const admission = detail.admission;
+  if (!admission || !Array.isArray(detail.entries) || !Array.isArray(detail.events)) {
+    fail('CNYOS_EXACT_STAGING_IPD_DETAIL_INVALID');
+  }
+  return {
+    admissionId: admission.admission_id,
+    status: admission.status,
+    version: admission.version,
+    requestedAttendingId: admission.requested_attending_id,
+    attendingPractitionerId: admission.attending_practitioner_id,
+    wardCode: admission.ward_code,
+    bedCode: admission.bed_code,
+    entries: detail.entries.map(entry => ({
+      entryId: entry.entry_id,
+      entryType: entry.entry_type,
+      authorId: entry.author_id,
+      admissionVersion: entry.admission_version
+    })),
+    events: detail.events.map(event => ({
+      eventId: event.event_id,
+      eventType: event.event_type,
+      fromStatus: event.from_status,
+      toStatus: event.to_status,
+      resultingVersion: event.resulting_version,
+      actorId: event.actor_id,
+      clinicalEntryId: event.clinical_entry_id
+    }))
+  };
+}
+
+async function expectDeniedWithoutMutation({ action, snapshot, expectedError, code }) {
+  const before = await snapshot();
+  let denied = false;
+  try {
+    await action();
+  } catch (error) {
+    if (error?.uncertain) throw error;
+    const message = String(error?.code || error?.message || '');
+    if (!message.includes(expectedError)) fail(`${code}_WRONG_ERROR`);
+    denied = true;
+  }
+  if (!denied) fail(`${code}_UNEXPECTED_SUCCESS`);
+  const after = await snapshot();
+  if (JSON.stringify(after) !== JSON.stringify(before)) fail(`${code}_MUTATED`);
+  return Object.freeze({
+    status: 'DENIED', expectedError, noMutationReadbackVerified: true
+  });
+}
+
+async function readAdminAuditHistory({ publishableKey, token, consultId, admissionId,
+  patientId, patientHn, encounterId, forbiddenClinicalValues, actorIds }) {
+  const entityFilter = encodeURIComponent(`(${consultId},${admissionId})`);
+  const rows = await requestJson(supabase(
+    `/rest/v1/audit_logs?select=id,action,entity,entity_id,user_id,metadata,occurred_at` +
+    `&entity_id=in.${entityFilter}&order=id.asc`
+  ), { headers: userHeaders(publishableKey, token) });
+  if (!Array.isArray(rows) || rows.length !== 12) {
+    fail('CNYOS_EXACT_STAGING_ADMIN_AUDIT_HISTORY_INVALID');
+  }
+  const expectedCounts = {
+    create_clinical_consult_request: 1,
+    transition_clinical_consult_request: 3,
+    create_ipd_admission_request: 1,
+    transition_ipd_admission: 4,
+    append_ipd_clinical_entry: 3
+  };
+  const counts = Object.fromEntries(Object.keys(expectedCounts).map(action => [action, 0]));
+  const forbidden = [patientId, patientHn, encounterId, ...forbiddenClinicalValues]
+    .filter(value => String(value || '').length > 0)
+    .map(value => String(value));
+  const expectedRows = [
+    {
+      action: 'create_clinical_consult_request', entity: 'clinical_consult_requests',
+      entityId: consultId, userId: actorIds.source,
+      metadata: { request_type: 'consult', status: 'requested', version: 1 }
+    },
+    ...[
+      ['requested', 'acknowledged', 2],
+      ['acknowledged', 'accepted', 3],
+      ['accepted', 'completed', 4]
+    ].map(([fromStatus, toStatus, version]) => ({
+      action: 'transition_clinical_consult_request', entity: 'clinical_consult_requests',
+      entityId: consultId, userId: actorIds.attending,
+      metadata: {
+        request_type: 'consult', from_status: fromStatus, to_status: toStatus, version
+      }
+    })),
+    {
+      action: 'create_ipd_admission_request', entity: 'inpatient_admissions',
+      entityId: admissionId, userId: actorIds.source,
+      metadata: { action: 'request_admission', status: 'requested', version: 1 }
+    },
+    ...[
+      ['assign_bed', 'requested', 'bed_assigned', 2, actorIds.reception],
+      ['admit', 'bed_assigned', 'admitted', 3, actorIds.attending],
+      ['prepare_discharge', 'admitted', 'discharge_ready', 7, actorIds.attending],
+      ['confirm_discharge', 'discharge_ready', 'discharged', 8, actorIds.reception]
+    ].map(([action, fromStatus, status, version, userId]) => ({
+      action: 'transition_ipd_admission', entity: 'inpatient_admissions',
+      entityId: admissionId, userId,
+      metadata: { action, from_status: fromStatus, status, version }
+    })),
+    ...[
+      ['progress_note', 4],
+      ['medication_reconciliation', 5],
+      ['discharge_summary', 6]
+    ].map(([entryType, version]) => ({
+      action: 'append_ipd_clinical_entry', entity: 'inpatient_admissions',
+      entityId: admissionId, userId: actorIds.attending,
+      metadata: { action: 'append_entry', entry_type: entryType, status: 'admitted', version }
+    }))
+  ];
+  const auditSignature = row => JSON.stringify({
+    action: row.action,
+    entity: row.entity,
+    entityId: row.entityId,
+    userId: row.userId,
+    metadata: Object.fromEntries(Object.entries(row.metadata).sort(([left], [right]) =>
+      left.localeCompare(right)))
+  });
+  const actualSignatures = [];
+  for (const row of rows) {
+    if (![consultId, admissionId].includes(row.entity_id) || !AUDIT_METADATA_KEYS[row.action]) {
+      fail('CNYOS_EXACT_STAGING_ADMIN_AUDIT_HISTORY_INVALID');
+    }
+    counts[row.action] += 1;
+    const keys = Object.keys(row.metadata || {}).sort();
+    if (JSON.stringify(keys) !== JSON.stringify([...AUDIT_METADATA_KEYS[row.action]].sort())) {
+      fail('CNYOS_EXACT_STAGING_ADMIN_AUDIT_METADATA_INVALID');
+    }
+    const serialized = JSON.stringify(row.metadata);
+    if (forbidden.some(value => serialized.includes(value))) {
+      fail('CNYOS_EXACT_STAGING_ADMIN_AUDIT_PHI_LEAK');
+    }
+    actualSignatures.push(auditSignature({
+      action: row.action,
+      entity: row.entity,
+      entityId: row.entity_id,
+      userId: row.user_id,
+      metadata: row.metadata
+    }));
+  }
+  if (JSON.stringify(counts) !== JSON.stringify(expectedCounts)) {
+    fail('CNYOS_EXACT_STAGING_ADMIN_AUDIT_HISTORY_INVALID');
+  }
+  const expectedSignatures = expectedRows.map(auditSignature);
+  if (JSON.stringify(actualSignatures.sort()) !== JSON.stringify(expectedSignatures.sort())) {
+    fail('CNYOS_EXACT_STAGING_ADMIN_AUDIT_ACTOR_OR_TRANSITION_INVALID');
+  }
+  return Object.freeze({
+    historyReadbackVerified: true,
+    phiRedacted: true,
+    clinicalPayloadRedacted: true,
+    actorAndTransitionReadbackVerified: true,
+    rowCount: rows.length,
+    actionCounts: counts
   });
 }
 
@@ -524,7 +740,12 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
     p_payment_right: 'SYNTHETIC-E2E', p_emergency_contact_name: null,
     p_allergy: 'SYNTHETIC NONE'
   }), 'CNYOS_EXACT_STAGING_PATIENT_INVALID');
-  if (!UUID.test(patient.id) || patient.national_id != null || patient.phone != null) {
+  if (!UUID.test(patient.id) ||
+    !new RegExp(EXACT_STAGING_SYNTHETIC_HN_PATTERN).test(String(patient.hn || '')) ||
+    String(patient.clinic_id || '').toLowerCase() !== EXACT_STAGING_TARGET.clinicId ||
+    patient.payment_right !== 'SYNTHETIC-E2E' || patient.national_id != null ||
+    patient.phone != null || patient.email != null ||
+    String(patient.created_by || '').toLowerCase() !== accounts.reception.userId) {
     fail('CNYOS_EXACT_STAGING_PATIENT_INVALID');
   }
   const starts = new Date(Date.now() + 72 * 3600_000);
@@ -559,14 +780,30 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
     patientId: patient.id, encounterId: encounter.encounter_id, budget
   });
 
+  const consultReason = `Synthetic consult ${config.runId}`;
+  const consultResponse = `Synthetic response ${config.runId}`;
   const consult = first(await rpc(as('source_practitioner'), 'create_clinical_consult_request', {
     p_source_encounter_id: encounter.encounter_id, p_request_key: randomKey(),
     p_request_type: 'consult', p_receiving_service: 'SYNTHETIC IPD',
-    p_reason: `Synthetic consult ${config.runId}`, p_urgency: 'routine',
+    p_reason: consultReason, p_urgency: 'routine',
     p_requested_receiver_id: accounts.attending.userId
   }), 'CNYOS_EXACT_STAGING_CONSULT_INVALID');
+  const consultReadback = role => readRpc(as(role), 'get_clinical_consult_request', {
+    p_request_id: consult.request_id
+  });
+  const consultWrongRole = await expectDeniedWithoutMutation({
+    action: () => rpc(as('source_practitioner'), 'transition_clinical_consult_request', {
+      p_request_id: consult.request_id, p_action: 'acknowledge',
+      p_expected_version: consult.version, p_request_key: randomKey(),
+      p_reason: null, p_clinical_response: null
+    }),
+    snapshot: async () => consultSnapshot(await consultReadback('source_practitioner')),
+    expectedError: 'CONSULT_RECEIVER_MUST_DIFFER_FROM_SENDER',
+    code: 'CNYOS_EXACT_STAGING_CONSULT_WRONG_ROLE'
+  });
   const acknowledged = first(await rpc(as('attending'), 'transition_clinical_consult_request', {
-    p_request_id: consult.request_id, p_action: 'acknowledge', p_expected_version: 1,
+    p_request_id: consult.request_id, p_action: 'acknowledge',
+    p_expected_version: consult.version,
     p_request_key: randomKey(), p_reason: null, p_clinical_response: null
   }), 'CNYOS_EXACT_STAGING_CONSULT_ACK_INVALID');
   const accepted = first(await rpc(as('attending'), 'transition_clinical_consult_request', {
@@ -577,31 +814,201 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
   const completed = first(await rpc(as('attending'), 'transition_clinical_consult_request', {
     p_request_id: consult.request_id, p_action: 'complete',
     p_expected_version: accepted.version, p_request_key: randomKey(),
-    p_reason: null, p_clinical_response: `Synthetic response ${config.runId}`
+    p_reason: null, p_clinical_response: consultResponse
   }), 'CNYOS_EXACT_STAGING_CONSULT_COMPLETE_INVALID');
   if (completed.status !== 'completed') fail('CNYOS_EXACT_STAGING_CONSULT_COMPLETE_INVALID');
+  const consultSourceDetail = consultSnapshot(await consultReadback('source_practitioner'));
+  const consultAttendingDetail = consultSnapshot(await consultReadback('attending'));
+  if (JSON.stringify(consultSourceDetail) !== JSON.stringify(consultAttendingDetail)) {
+    fail('CNYOS_EXACT_STAGING_CONSULT_PARTICIPANT_READBACK_MISMATCH');
+  }
+  const consultEventEvidence = consultSourceDetail.events.map(({ eventId: _eventId, ...event }) => event);
+  const expectedConsultEvents = [
+    {
+      eventType: 'requested', fromStatus: null, toStatus: 'requested', resultingVersion: 1,
+      actorId: accounts.source_practitioner.userId
+    },
+    {
+      eventType: 'acknowledged', fromStatus: 'requested', toStatus: 'acknowledged',
+      resultingVersion: 2, actorId: accounts.attending.userId
+    },
+    {
+      eventType: 'accepted', fromStatus: 'acknowledged', toStatus: 'accepted',
+      resultingVersion: 3, actorId: accounts.attending.userId
+    },
+    {
+      eventType: 'completed', fromStatus: 'accepted', toStatus: 'completed',
+      resultingVersion: 4, actorId: accounts.attending.userId
+    }
+  ];
+  if (consultSourceDetail.requestId !== consult.request_id ||
+    consultSourceDetail.status !== 'completed' ||
+    consultSourceDetail.version !== completed.version ||
+    consultSourceDetail.assignedReceiverId !== accounts.attending.userId ||
+    consultSourceDetail.clinicalResponse !== consultResponse ||
+    JSON.stringify(consultEventEvidence) !== JSON.stringify(expectedConsultEvents)) {
+    fail('CNYOS_EXACT_STAGING_CONSULT_DETAIL_INVALID');
+  }
 
+  const admissionReason = `Synthetic IPD request ${config.runId}`;
   const admission = first(await rpc(as('source_practitioner'), 'create_ipd_admission_request', {
     p_source_encounter_id: encounter.encounter_id,
     p_requested_attending_id: accounts.attending.userId,
-    p_request_key: randomKey(), p_admission_reason: `Synthetic IPD request ${config.runId}`
+    p_request_key: randomKey(), p_admission_reason: admissionReason
   }), 'CNYOS_EXACT_STAGING_IPD_REQUEST_INVALID');
+  const ipdReadback = role => readRpc(as(role), 'get_ipd_admission', {
+    p_admission_id: admission.admission_id
+  });
+  const ipdWrongRole = await expectDeniedWithoutMutation({
+    action: () => rpc(as('source_practitioner'), 'transition_ipd_admission', {
+      p_admission_id: admission.admission_id, p_action: 'assign_bed',
+      p_expected_version: admission.version, p_request_key: randomKey(),
+      p_ward_code: 'SYNTH-DENIED', p_bed_code: `DENIED-${suffix}`, p_note: null
+    }),
+    snapshot: async () => ipdSnapshot(await ipdReadback('source_practitioner')),
+    expectedError: 'RECEPTION_ROLE_REQUIRED',
+    code: 'CNYOS_EXACT_STAGING_IPD_WRONG_ROLE'
+  });
   const placed = first(await rpc(as('reception'), 'transition_ipd_admission', {
     p_admission_id: admission.admission_id, p_action: 'assign_bed',
     p_expected_version: admission.version, p_request_key: randomKey(),
-    p_ward_code: 'SYNTH-A', p_bed_code: `BED-${suffix.slice(-2)}`, p_note: null
+    p_ward_code: 'SYNTH-A', p_bed_code: `BED-${suffix}`, p_note: null
   }), 'CNYOS_EXACT_STAGING_IPD_PLACEMENT_INVALID');
+  const admissionNote = `Synthetic admission ${config.runId}`;
   const admitted = first(await rpc(as('attending'), 'transition_ipd_admission', {
     p_admission_id: admission.admission_id, p_action: 'admit',
     p_expected_version: placed.version, p_request_key: randomKey(),
-    p_ward_code: null, p_bed_code: null, p_note: `Synthetic admission ${config.runId}`
+    p_ward_code: null, p_bed_code: null, p_note: admissionNote
   }), 'CNYOS_EXACT_STAGING_IPD_ADMIT_INVALID');
+  const progressNote = `Synthetic progress note ${config.runId} - NOT CLINICAL ADVICE`;
   const note = first(await rpc(as('attending'), 'append_ipd_clinical_entry', {
     p_admission_id: admission.admission_id, p_entry_type: 'progress_note',
-    p_content: `Synthetic progress note ${config.runId} - NOT CLINICAL ADVICE`,
+    p_content: progressNote,
     p_expected_version: admitted.version, p_request_key: randomKey(),
     p_supersedes_entry_id: null, p_related_entry_id: null
   }), 'CNYOS_EXACT_STAGING_IPD_NOTE_INVALID');
+  const medicationReconciliation = `Synthetic medication reconciliation ${config.runId}`;
+  const reconciled = first(await rpc(as('attending'), 'append_ipd_clinical_entry', {
+    p_admission_id: admission.admission_id, p_entry_type: 'medication_reconciliation',
+    p_content: medicationReconciliation,
+    p_expected_version: note.admission_version, p_request_key: randomKey(),
+    p_supersedes_entry_id: null, p_related_entry_id: null
+  }), 'CNYOS_EXACT_STAGING_IPD_MEDICATION_RECONCILIATION_INVALID');
+  const dischargeSummary = `Synthetic discharge summary ${config.runId} - NOT CLINICAL ADVICE`;
+  const summarized = first(await rpc(as('attending'), 'append_ipd_clinical_entry', {
+    p_admission_id: admission.admission_id, p_entry_type: 'discharge_summary',
+    p_content: dischargeSummary,
+    p_expected_version: reconciled.admission_version, p_request_key: randomKey(),
+    p_supersedes_entry_id: null, p_related_entry_id: null
+  }), 'CNYOS_EXACT_STAGING_IPD_DISCHARGE_SUMMARY_INVALID');
+  const dischargeReady = first(await rpc(as('attending'), 'transition_ipd_admission', {
+    p_admission_id: admission.admission_id, p_action: 'prepare_discharge',
+    p_expected_version: summarized.admission_version, p_request_key: randomKey(),
+    p_ward_code: null, p_bed_code: null, p_note: null
+  }), 'CNYOS_EXACT_STAGING_IPD_PREPARE_DISCHARGE_INVALID');
+  const discharged = first(await rpc(as('reception'), 'transition_ipd_admission', {
+    p_admission_id: admission.admission_id, p_action: 'confirm_discharge',
+    p_expected_version: dischargeReady.version, p_request_key: randomKey(),
+    p_ward_code: null, p_bed_code: null, p_note: null
+  }), 'CNYOS_EXACT_STAGING_IPD_CONFIRM_DISCHARGE_INVALID');
+  const attendingIpdDetail = ipdSnapshot(await ipdReadback('attending'));
+  const sourceIpdDetail = ipdSnapshot(await ipdReadback('source_practitioner'));
+  const receptionIpdDetail = ipdSnapshot(await ipdReadback('reception'));
+  const expectedIpdEntryTypes = [
+    'admission_request', 'admission_note', 'progress_note',
+    'medication_reconciliation', 'discharge_summary'
+  ];
+  const expectedIpdEventTypes = [
+    'requested', 'bed_assigned', 'admitted', 'entry_appended', 'entry_appended',
+    'entry_appended', 'discharge_ready', 'discharged'
+  ];
+  const expectedIpdEventActors = [
+    accounts.source_practitioner.userId, accounts.reception.userId,
+    accounts.attending.userId, accounts.attending.userId, accounts.attending.userId,
+    accounts.attending.userId, accounts.attending.userId, accounts.reception.userId
+  ];
+  const expectedIpdEntries = [
+    { entryType: 'admission_request', authorId: accounts.source_practitioner.userId,
+      admissionVersion: 1 },
+    { entryType: 'admission_note', authorId: accounts.attending.userId,
+      admissionVersion: 3 },
+    { entryType: 'progress_note', authorId: accounts.attending.userId,
+      admissionVersion: 4 },
+    { entryType: 'medication_reconciliation', authorId: accounts.attending.userId,
+      admissionVersion: 5 },
+    { entryType: 'discharge_summary', authorId: accounts.attending.userId,
+      admissionVersion: 6 }
+  ];
+  const entryIdByType = new Map(attendingIpdDetail.entries.map(entry =>
+    [entry.entryType, entry.entryId]));
+  if (attendingIpdDetail.entries.some(entry =>
+    !Number.isSafeInteger(Number(entry.entryId)) || Number(entry.entryId) < 1) ||
+    entryIdByType.size !== expectedIpdEntries.length) {
+    fail('CNYOS_EXACT_STAGING_IPD_ENTRY_ID_INVALID');
+  }
+  const expectedIpdEvents = [
+    {
+      eventType: 'requested', fromStatus: null, toStatus: 'requested', resultingVersion: 1,
+      actorId: accounts.source_practitioner.userId,
+      clinicalEntryId: entryIdByType.get('admission_request')
+    },
+    {
+      eventType: 'bed_assigned', fromStatus: 'requested', toStatus: 'bed_assigned',
+      resultingVersion: 2, actorId: accounts.reception.userId, clinicalEntryId: null
+    },
+    {
+      eventType: 'admitted', fromStatus: 'bed_assigned', toStatus: 'admitted',
+      resultingVersion: 3, actorId: accounts.attending.userId,
+      clinicalEntryId: entryIdByType.get('admission_note')
+    },
+    ...[
+      ['progress_note', 4], ['medication_reconciliation', 5], ['discharge_summary', 6]
+    ].map(([entryType, version]) => ({
+      eventType: 'entry_appended', fromStatus: 'admitted', toStatus: 'admitted',
+      resultingVersion: version, actorId: accounts.attending.userId,
+      clinicalEntryId: entryIdByType.get(entryType)
+    })),
+    {
+      eventType: 'discharge_ready', fromStatus: 'admitted', toStatus: 'discharge_ready',
+      resultingVersion: 7, actorId: accounts.attending.userId, clinicalEntryId: null
+    },
+    {
+      eventType: 'discharged', fromStatus: 'discharge_ready', toStatus: 'discharged',
+      resultingVersion: 8, actorId: accounts.reception.userId, clinicalEntryId: null
+    }
+  ];
+  const ipdEntryEvidence = attendingIpdDetail.entries.map(({ entryId: _entryId, ...entry }) => entry);
+  const ipdEventEvidence = attendingIpdDetail.events.map(({ eventId: _eventId, ...event }) => event);
+  if (attendingIpdDetail.admissionId !== admission.admission_id ||
+    attendingIpdDetail.status !== 'discharged' ||
+    attendingIpdDetail.version !== discharged.version ||
+    attendingIpdDetail.requestedAttendingId !== accounts.attending.userId ||
+    attendingIpdDetail.attendingPractitionerId !== accounts.attending.userId ||
+    attendingIpdDetail.wardCode !== 'SYNTH-A' ||
+    attendingIpdDetail.bedCode !== `BED-${suffix}` ||
+    JSON.stringify(attendingIpdDetail.entries.map(entry => entry.entryType)) !==
+      JSON.stringify(expectedIpdEntryTypes) ||
+    JSON.stringify(attendingIpdDetail.events.map(event => event.eventType)) !==
+      JSON.stringify(expectedIpdEventTypes) ||
+    JSON.stringify(attendingIpdDetail.events.map(event => event.actorId)) !==
+      JSON.stringify(expectedIpdEventActors) ||
+    JSON.stringify(ipdEntryEvidence) !== JSON.stringify(expectedIpdEntries) ||
+    JSON.stringify(ipdEventEvidence) !== JSON.stringify(expectedIpdEvents)) {
+    fail('CNYOS_EXACT_STAGING_IPD_TIMELINE_INVALID');
+  }
+  if (sourceIpdDetail.status !== 'discharged' ||
+    JSON.stringify(sourceIpdDetail.entries.map(entry => entry.entryType)) !==
+      JSON.stringify(['admission_request']) ||
+    sourceIpdDetail.events.some(event => event.eventType === 'entry_appended')) {
+    fail('CNYOS_EXACT_STAGING_IPD_SOURCE_READBACK_SCOPE_INVALID');
+  }
+  if (receptionIpdDetail.status !== 'discharged' || receptionIpdDetail.entries.length !== 0 ||
+    receptionIpdDetail.requestedAttendingId !== null ||
+    receptionIpdDetail.attendingPractitionerId !== null ||
+    receptionIpdDetail.events.some(event =>
+      event.actorId !== null || event.clinicalEntryId !== null || event.eventType === 'entry_appended')) {
+    fail('CNYOS_EXACT_STAGING_IPD_RECEPTION_REDACTION_INVALID');
+  }
 
   const prescription = first(await rpc(as('source_practitioner'),
     'create_atomic_prescription_handoff', {
@@ -643,20 +1050,65 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
     p_reference_note: `Synthetic exact staging ${config.runId}`
   }), 'CNYOS_EXACT_STAGING_PAYMENT_INVALID');
   if (payment.invoice_status !== 'paid') fail('CNYOS_EXACT_STAGING_PAYMENT_INVALID');
+  const adminAudit = await readAdminAuditHistory({
+    publishableKey,
+    token: accounts.admin.token,
+    consultId: consult.request_id,
+    admissionId: admission.admission_id,
+    patientId: patient.id,
+    patientHn: patient.hn,
+    encounterId: encounter.encounter_id,
+    actorIds: {
+      source: accounts.source_practitioner.userId,
+      attending: accounts.attending.userId,
+      reception: accounts.reception.userId
+    },
+    forbiddenClinicalValues: [
+      consultReason, consultResponse, admissionReason, admissionNote, progressNote,
+      medicationReconciliation, dischargeSummary
+    ]
+  });
 
   return {
     syntheticOnly: true,
     realPhiUsed: false,
     runId: config.runId,
     actorIds: Object.fromEntries(ROLE_SPECS.map(spec => [spec.key, accounts[spec.key].userId])),
-    patient: { id: patient.id, hn: patient.hn, realIdentifiersAbsent: true },
+    patient: {
+      id: patient.id, hn: patient.hn, syntheticRunSuffix: suffix,
+      hnGeneratedByServer: true, clinicId: EXACT_STAGING_TARGET.clinicId,
+      paymentRight: 'SYNTHETIC-E2E', realIdentifiersAbsent: true
+    },
     appointment: { id: appointment.id, number: appointment.appointment_no },
     encounter: { id: encounter.encounter_id, number: encounter.encounter_no },
     opdBrowserProof: browser,
-    consult: { id: consult.request_id, status: completed.status, version: completed.version },
+    consult: {
+      id: consult.request_id,
+      status: completed.status,
+      version: completed.version,
+      senderActorId: accounts.source_practitioner.userId,
+      receiverActorId: accounts.attending.userId,
+      wrongRole: consultWrongRole,
+      participantDetailReadbackVerified: true,
+      eventTimelineReadbackVerified: true,
+      eventTypes: consultEventEvidence.map(event => event.eventType),
+      eventDetails: consultEventEvidence
+    },
     admission: {
-      id: admission.admission_id, status: admitted.status, versionAfterNote: note.admission_version,
-      attendingActorId: accounts.attending.userId
+      id: admission.admission_id,
+      status: discharged.status,
+      version: discharged.version,
+      sourceActorId: accounts.source_practitioner.userId,
+      attendingActorId: accounts.attending.userId,
+      placementAndDischargeActorId: accounts.reception.userId,
+      wrongRole: ipdWrongRole,
+      timelineReadbackVerified: true,
+      sourceAdmissionRequestOnlyVerified: true,
+      receptionClinicalEntriesAndActorIdsRedacted: true,
+      entryTypes: attendingIpdDetail.entries.map(entry => entry.entryType),
+      eventTypes: attendingIpdDetail.events.map(event => event.eventType),
+      entryDetails: attendingIpdDetail.entries,
+      eventDetails: attendingIpdDetail.events
     },
     pharmacy: {
       productId: product.id, lotId: lot.id, prescriptionId: prescription.prescription_id,
@@ -670,7 +1122,16 @@ async function runClinicalJourney({ config, accounts, publishableKey, serviceRol
       grandTotal: Number(invoice.grand_total), paymentId: payment.payment_id,
       invoiceStatus: payment.invoice_status, actorId: accounts.billing.userId
     },
-    admin: { actorId: accounts.admin.userId, separatelyAuthenticated: true }
+    admin: {
+      actorId: accounts.admin.userId,
+      separatelyAuthenticated: true,
+      auditHistoryReadbackVerified: adminAudit.historyReadbackVerified,
+      auditPhiRedacted: adminAudit.phiRedacted,
+      auditClinicalPayloadRedacted: adminAudit.clinicalPayloadRedacted,
+      auditActorAndTransitionReadbackVerified: adminAudit.actorAndTransitionReadbackVerified,
+      auditRowCount: adminAudit.rowCount,
+      auditActionCounts: adminAudit.actionCounts
+    }
   };
 }
 
@@ -693,6 +1154,7 @@ async function main() {
       const receiptError = {
         schemaVersion: 1, kind: 'cnyos_exact_staging_deploy_receipt_error',
         status: 'UNCERTAIN', stagingOnly: true, productionAuthorized: false,
+        controller: controllerEvidence(configBase),
         source: { commit: configBase.appCommit, tree: configBase.appTree },
         rawByteLength: receiptBytes?.length ?? null,
         rawSha256: receiptBytes ? sha256(receiptBytes) : null,
@@ -726,6 +1188,9 @@ async function main() {
     const journey = await runClinicalJourney({
       config, accounts, publishableKey, serviceRoleKey, password, budget
     });
+    if (budget.records.length !== config.limits.totalMutations) {
+      fail('CNYOS_EXACT_STAGING_MUTATION_COUNT_INVALID');
+    }
     if (Date.now() - started > config.limits.uatTimeoutMs) {
       fail('CNYOS_EXACT_STAGING_UAT_TIMEOUT_EXCEEDED');
     }
@@ -733,11 +1198,12 @@ async function main() {
       userId: accounts[spec.key].userId,
       emailSha256: sha256(accounts[spec.key].email),
       profileRole: spec.profileRole, systemRole: spec.systemRole, clinicRole: spec.clinicRole,
-      syntheticMarkerVerified: true
+      syntheticMarkerVerified: true, authenticatedSessionVerified: true
     }]));
     const fixtureEvidence = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_synthetic_fixture',
       status: 'PASS', syntheticOnly: true, realPhiUsed: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployId: receipt.deployId, runId: config.runId,
       accounts: accountEvidence,
@@ -748,6 +1214,7 @@ async function main() {
     const uatEvidence = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat',
       status: 'PASS', stagingOnly: true, productionAuthorized: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployment: receipt,
       target: {
@@ -768,7 +1235,7 @@ async function main() {
     const files = [
       'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
       'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
-      'fixture-evidence.json', 'uat-evidence.json'
+      'database-reconciliation.json', 'fixture-evidence.json', 'uat-evidence.json'
     ];
     const entries = [];
     for (const name of files) {
@@ -779,6 +1246,7 @@ async function main() {
     const manifest = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_evidence_manifest',
       status: 'PASS', stagingOnly: true, productionAuthorized: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployId: receipt.deployId, rollbackDeployId: config.rollbackDeployId,
       evidence: entries
@@ -791,6 +1259,7 @@ async function main() {
     const failure = {
       schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat', status,
       stagingOnly: true, productionAuthorized: false,
+      controller: controllerEvidence(config),
       source: { commit: config.appCommit, tree: config.appTree },
       deployId: receipt?.deployId ?? null,
       deployReceiptCaptured: receipt !== null,

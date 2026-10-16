@@ -8,10 +8,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   EXACT_STAGING_ENVIRONMENT,
+  EXACT_STAGING_DATABASE_FILES,
   EXACT_STAGING_FUNCTION_ENVIRONMENT,
   EXACT_STAGING_LIMITS,
   EXACT_STAGING_PRODUCTION_DENYLIST,
   EXACT_STAGING_SECRET_NAMES,
+  EXACT_STAGING_SYNTHETIC_HN_PATTERN,
   EXACT_STAGING_TARGET,
   EXACT_STAGING_WORKFLOW_PATH,
   ExactStagingReleaseError,
@@ -30,8 +32,13 @@ import {
   createExactStagingPublishIntent,
   deriveExactStagingTerminalStatus,
   executeExactStagingPublishAttempt,
+  finalizeExactStagingEvidence,
   reconcileExactStagingPublish
 } from '../scripts/exact-staging-publish.mjs';
+import {
+  parseExactStagingDatabaseUrl,
+  reconcileExactStagingDatabase
+} from '../scripts/reconcile-exact-staging-database.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(packageRoot, '..', '..');
@@ -44,14 +51,21 @@ const runner = await fs.readFile(path.join(packageRoot,
   'scripts/run-exact-staging-clinical-uat.mjs'), 'utf8');
 const publisher = await fs.readFile(path.join(packageRoot,
   'scripts/exact-staging-publish.mjs'), 'utf8');
+const cleanupArtifact = await fs.readFile(path.join(packageRoot, 'sql',
+  'cnyos-staging-partial-backup-replay-cleanup.sql'));
+assert.equal(sha256(cleanupArtifact),
+  'd9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cnyos-exact-staging-contract-'));
 const artifact = path.join(root, 'artifact');
 const dist = path.join(artifact, 'dist');
 const functions = path.join(artifact, 'functions');
+const database = path.join(artifact, 'database');
 const work = path.join(root, 'work');
 await fs.mkdir(dist, { recursive: true });
 await fs.mkdir(functions, { recursive: true });
+await fs.mkdir(database, { recursive: true });
 
+const controllerCommit = '9'.repeat(40);
 const commit = 'a'.repeat(40);
 const tree = 'b'.repeat(40);
 const rollback = 'c'.repeat(24);
@@ -114,7 +128,56 @@ const functionManifest = {
 await fs.writeFile(path.join(artifact, 'function-input-manifest.json'),
   `${JSON.stringify(functionManifest)}\n`);
 
+const databaseText = new Map([
+  ['20261013230000_staging_forward_reconciliation_ce4cee52.sql', 'begin; commit;\n'],
+  ['20261013230000_staging_forward_reconciliation_ce4cee52.psql', '\\ir 20261013230000_staging_forward_reconciliation_ce4cee52.sql\n'],
+  ['20261013230000_staging_forward_reconciliation_verify.sql', 'select 1;\n'],
+  ['20261017005000_audit_logs_governance_admin_read.sql', 'begin; commit;\n']
+]);
+const databaseHash = value => sha256(Buffer.from(value));
+const reconciliationManifest = {
+  version: '20261013230000', schemaVersion: 'synthetic', sourceTree: 'f'.repeat(40),
+  stagingProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+  productionProjectRef: 'qptxnrldzzinlcabudjv',
+  expectedSystemIdentifier: '7666007964130682852',
+  artifact: '20261013230000_staging_forward_reconciliation_ce4cee52.sql',
+  artifactSha256: databaseHash(databaseText.get(
+    '20261013230000_staging_forward_reconciliation_ce4cee52.sql')),
+  wrapper: '20261013230000_staging_forward_reconciliation_ce4cee52.psql',
+  wrapperSha256: databaseHash(databaseText.get(
+    '20261013230000_staging_forward_reconciliation_ce4cee52.psql')),
+  verifier: '20261013230000_staging_forward_reconciliation_verify.sql',
+  verifierSha256: databaseHash(databaseText.get(
+    '20261013230000_staging_forward_reconciliation_verify.sql')),
+  executeSqlExplicitTransactionRollbackProven: true,
+  historicalLedgerReplayed: false
+};
+databaseText.set('20261013230000_staging_forward_reconciliation_manifest.json',
+  `${JSON.stringify(reconciliationManifest)}\n`);
+for (const [name, value] of databaseText) await fs.writeFile(path.join(database, name), value);
+const databaseEntries = [];
+for (const name of [...EXACT_STAGING_DATABASE_FILES].sort()) {
+  const bytes = await fs.readFile(path.join(database, name));
+  databaseEntries.push({ path: name, size: bytes.length, sha256: sha256(bytes), mode: '100644' });
+}
+const databaseManifest = {
+  schemaVersion: 1, artifactType: 'cnyos-staging-database-inputs',
+  source: { requestedRef: commit, resolvedRefObjectId: commit, sourceTreeObjectId: tree },
+  target: { projectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    systemIdentifier: '7666007964130682852' },
+  reconciliation: { legacyBundleSourceTree:
+    'ce4cee52f1ad7fed574cadf8a5e62e0f181d0d67', finalAppTree: tree,
+    generatorCheckRequired: true, auditMigrationIncluded: true },
+  safety: { stagingOnly: true, productionAuthorized: false,
+    resetAllowed: false, containsPatientData: false },
+  fileCount: databaseEntries.length, files: databaseEntries,
+  manifestSha256: sha256(Buffer.from(JSON.stringify(databaseEntries)))
+};
+await fs.writeFile(path.join(artifact, 'database-input-manifest.json'),
+  `${JSON.stringify(databaseManifest)}\n`);
+
 const config = loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
   CNYOS_EXPECTED_SOURCE_COMMIT: commit,
   CNYOS_EXPECTED_SOURCE_TREE: tree,
   CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
@@ -127,6 +190,147 @@ assert.equal(verified.artifact.source.commit, commit);
 assert.equal(verified.artifact.source.tree, tree);
 assert.equal(verified.artifact.runtimeFileCount, runtimeNames.length);
 assert.equal(verified.artifact.functionFileCount, 1);
+assert.equal(verified.artifact.databaseFileCount, 5);
+
+const directDatabaseUrl =
+  'postgresql://postgres:synthetic-secret@db.hsmnjwxurlmsizndjlun.supabase.co:5432/postgres?sslmode=require';
+assert.equal(parseExactStagingDatabaseUrl(directDatabaseUrl).PGHOST,
+  'db.hsmnjwxurlmsizndjlun.supabase.co');
+assert.equal(parseExactStagingDatabaseUrl(
+  'postgresql://postgres.hsmnjwxurlmsizndjlun:synthetic-secret@' +
+  'aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require').PGUSER,
+'postgres.hsmnjwxurlmsizndjlun');
+for (const invalidUrl of [
+  directDatabaseUrl.replace('hsmnjwxurlmsizndjlun', 'qptxnrldzzinlcabudjv'),
+  directDatabaseUrl.replace(':5432', ':6543'),
+  directDatabaseUrl.replace('db.hsmnjwxurlmsizndjlun.supabase.co', 'example.com'),
+  directDatabaseUrl.replace('postgres:', 'service_role:')
+]) assert.throws(() => parseExactStagingDatabaseUrl(invalidUrl),
+  /CNYOS_EXACT_STAGING_DATABASE_URL_INVALID/);
+
+const databaseRunnerConfig = suffix => loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
+  CNYOS_EXPECTED_SOURCE_COMMIT: commit,
+  CNYOS_EXPECTED_SOURCE_TREE: tree,
+  CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
+  CNYOS_STAGING_RUN_REFERENCE: `exact-staging-db-${suffix}-20261017`,
+  CNYOS_STAGING_ARTIFACT_DIRECTORY: artifact,
+  CNYOS_EXACT_STAGING_WORK_DIRECTORY: path.join(root, `database-work-${suffix}`)
+});
+const forwardAttemptId = '11111111-1111-4111-a111-111111111111';
+const auditAttemptId = '22222222-2222-4222-a222-222222222222';
+const psqlResult = stdout => ({ status: 0, signal: null,
+  stdout: Buffer.from(stdout), stderr: Buffer.alloc(0) });
+const runDatabaseScenario = async (suffix, outputs) => {
+  const runnerConfig = databaseRunnerConfig(suffix);
+  await fs.mkdir(runnerConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+  let index = 0;
+  const calls = [];
+  const evidence = await reconcileExactStagingDatabase(runnerConfig, directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    now: () => index === 0 ? '2026-10-17T00:00:00.000Z' :
+      '2026-10-17T00:01:00.000Z',
+    spawnImpl: (command, args, options) => {
+      calls.push({ command, args, options });
+      assert.doesNotMatch(JSON.stringify(args), /synthetic-secret/);
+      return outputs[index++];
+    }
+  });
+  const serialized = await fs.readFile(path.join(runnerConfig.uploadDirectory,
+    'database-reconciliation.json'), 'utf8');
+  assert.doesNotMatch(serialized, /synthetic-secret|postgresql:\/\//);
+  return { evidence, calls };
+};
+const freshDatabase = await runDatabaseScenario('fresh', [
+  psqlResult('false\n'), psqlResult('0\n'), psqlResult(''), psqlResult(''),
+  psqlResult(''), psqlResult(''), psqlResult('')
+]);
+assert.equal(freshDatabase.evidence.result, 'APPLIED_VERIFIED');
+assert.equal(freshDatabase.calls.length, 7);
+for (const policyCheckCall of [freshDatabase.calls[5], freshDatabase.calls[6]]) {
+  const policySql = policyCheckCall.args.join('\n');
+  assert.match(policySql,
+    /count\(\*\).*public\.audit_logs.*<> 3[\s\S]*audit_logs_tenant_boundary[\s\S]*cnyos_active_subscription_boundary[\s\S]*audit_read_governance_admin/s);
+  assert.doesNotMatch(policySql, /audit_role_history_read_governance/);
+  assert.match(policySql, /CNYOS_AUDIT_VERIFY_POLICY_INVENTORY_INVALID/);
+  assert.match(policySql,
+    /\$tenant\$\(\(clinic_id IS NOT NULL\) AND is_clinic_member\(clinic_id\)\)\$tenant\$/);
+  assert.match(policySql,
+    /\$subscription\$\(current_clinic_id\(\) IS NOT NULL\)\$subscription\$/);
+  assert.match(policySql,
+    /\$governance\$\(\(\( SELECT current_user_role\(\) AS current_user_role\)/);
+  assert.match(policySql,
+    /digest\(convert_to\(string_agg\(line,E'\\n' order by line\),'UTF8'\),[\s\S]*'sha256'/);
+  assert.match(policySql, /ACL_EFFECTIVE[\s\S]*authenticated[\s\S]*SELECT[\s\S]*INSERT/);
+}
+const auditReceiptSqlText = freshDatabase.calls[5].args.join('\n');
+assert.match(auditReceiptSqlText,
+  /artifact_sha256,catalog_fingerprint[\s\S]*v_audit_surface_fingerprint/);
+assert.doesNotMatch(auditReceiptSqlText,
+  /'[^']*',catalog_fingerprint,schema_version,session_user/);
+const auditVerifySqlText = freshDatabase.calls[6].args.join('\n');
+assert.match(auditVerifySqlText,
+  new RegExp(`attempt_id='${auditAttemptId}'::uuid[\\s\\S]*` +
+    'catalog_fingerprint=v_audit_surface_fingerprint'));
+const cleanedDatabase = await runDatabaseScenario('cleanup', [
+  psqlResult('false\n'), psqlResult('4\n'), psqlResult(''), psqlResult(''),
+  psqlResult(''), psqlResult(''), psqlResult(''), psqlResult(''), psqlResult('')
+]);
+assert.equal(cleanedDatabase.evidence.result, 'APPLIED_VERIFIED');
+assert.deepEqual(Object.keys(cleanedDatabase.evidence.phases), [
+  'receiptProbe', 'cleanupProbe', 'cleanupPreflight', 'cleanupApply',
+  'forwardApply', 'forwardVerify', 'auditApply', 'auditReceipt', 'auditVerify'
+]);
+const priorDatabase = await runDatabaseScenario('prior', [
+  psqlResult('true\n'), psqlResult(`${forwardAttemptId}\n`),
+  psqlResult(''), psqlResult(`${auditAttemptId}\n`), psqlResult('')
+]);
+assert.equal(priorDatabase.evidence.result, 'PRIOR_APPLIED_VERIFIED');
+assert.equal(priorDatabase.evidence.auditAttemptId, auditAttemptId);
+assert.equal(priorDatabase.calls.length, 5);
+const resumedDatabase = await runDatabaseScenario('resumed', [
+  psqlResult('true\n'), psqlResult(`${forwardAttemptId}\n`), psqlResult(''),
+  psqlResult('\n'), psqlResult(''), psqlResult(''), psqlResult('')
+]);
+assert.equal(resumedDatabase.evidence.result, 'RESUMED_AUDIT_APPLIED_VERIFIED');
+assert.equal(resumedDatabase.calls.length, 7);
+
+const unknownDriftConfig = databaseRunnerConfig('unknown-drift');
+await fs.mkdir(unknownDriftConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+let unknownDriftCall = 0;
+await assert.rejects(() => reconcileExactStagingDatabase(unknownDriftConfig,
+  directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    spawnImpl: () => [psqlResult('false\n'), psqlResult('2\n')][unknownDriftCall++]
+  }), /CNYOS_EXACT_STAGING_CLEANUP_UNKNOWN_DRIFT/);
+assert.equal(unknownDriftCall, 2);
+
+const priorAuditDriftConfig = databaseRunnerConfig('prior-audit-drift');
+await fs.mkdir(priorAuditDriftConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+let priorAuditDriftCall = 0;
+const priorAuditDriftOutputs = [
+  psqlResult('true\n'), psqlResult(`${forwardAttemptId}\n`), psqlResult(''),
+  psqlResult(`${auditAttemptId}\n`),
+  { status: 1, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.from('drift') }
+];
+await assert.rejects(() => reconcileExactStagingDatabase(priorAuditDriftConfig,
+  directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    spawnImpl: () => priorAuditDriftOutputs[priorAuditDriftCall++]
+  }), /CNYOS_EXACT_STAGING_DATABASE_PRIOR_AUDIT_VERIFY_FAILED/);
+assert.equal(priorAuditDriftCall, 5);
+
+const failedRunnerConfig = databaseRunnerConfig('failed');
+await fs.mkdir(failedRunnerConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+let failedCall = 0;
+await assert.rejects(() => reconcileExactStagingDatabase(failedRunnerConfig,
+  directDatabaseUrl, {
+    attemptId: forwardAttemptId, auditAttemptId,
+    spawnImpl: () => failedCall++ === 0 ? psqlResult('false\n') :
+      failedCall === 2 ? psqlResult('0\n') :
+        ({ status: 1, signal: null, stdout: Buffer.alloc(0), stderr: Buffer.from('failed') })
+  }), /CNYOS_EXACT_STAGING_DATABASE_FORWARD_APPLY_FAILED/);
+assert.equal(failedCall, 3);
 
 const receipt = parseNetlifyDeployReceipt({
   deploy_id: 'f'.repeat(24),
@@ -243,36 +447,180 @@ assert.throws(() => verifyExactStagingFunctionEnvironment(config, 'n'.repeat(32)
 const tampered = path.join(dist, 'app.js');
 await fs.appendFile(tampered, 'tamper');
 await assert.rejects(() => verifyExactStagingArtifact(config), ExactStagingReleaseError);
+await fs.writeFile(tampered, 'app.js:synthetic\n');
+
+const unexpectedRootFile = path.join(artifact, 'unexpected-root-file.txt');
+await fs.writeFile(unexpectedRootFile, 'must be rejected\n');
+await assert.rejects(() => verifyExactStagingArtifact(config),
+  /CNYOS_EXACT_STAGING_ARTIFACT_CLOSED_WORLD_INVALID/);
+await fs.rm(unexpectedRootFile);
+
+await fs.writeFile(config.functionManifestPath, `${JSON.stringify({
+  ...functionManifest,
+  source: { ...functionManifest.source, resolvedRefObjectId: '8'.repeat(40) }
+})}\n`);
+await assert.rejects(() => verifyExactStagingArtifact(config),
+  /CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID/);
+await fs.writeFile(config.functionManifestPath, `${JSON.stringify(functionManifest)}\n`);
+
+const savedFunctionManifest = path.join(artifact, 'function-input-manifest.saved.json');
+await fs.rename(config.functionManifestPath, savedFunctionManifest);
+await fs.symlink(savedFunctionManifest, config.functionManifestPath);
+await assert.rejects(() => verifyExactStagingArtifact(config),
+  /CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID/);
+await fs.rm(config.functionManifestPath);
+await fs.rename(savedFunctionManifest, config.functionManifestPath);
 
 assert.equal(EXACT_STAGING_ENVIRONMENT, 'cnyos-staging-publish');
 assert.equal(EXACT_STAGING_LIMITS.authUsers, 7);
 assert.equal(EXACT_STAGING_LIMITS.syntheticCases, 1);
 assert.equal(EXACT_STAGING_LIMITS.browserOpdWrites, 2);
+assert.equal(EXACT_STAGING_LIMITS.totalMutations, 51);
 assert.equal(EXACT_STAGING_LIMITS.requestRetries, 0);
 assert.deepEqual(EXACT_STAGING_SECRET_NAMES, [
   'CNYOS_STAGING_NETLIFY_AUTH_TOKEN',
+  'CNYOS_STAGING_DATABASE_URL',
   'CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY',
-  'CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY',
   'CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD'
 ]);
+assert.equal(EXACT_STAGING_SYNTHETIC_HN_PATTERN, '^CHANANYASTG-[0-9]{8}$');
 
 assert.match(workflow, /^on:\n  workflow_dispatch:\n/m);
 assert.doesNotMatch(workflow, /^\s+(?:push|pull_request|workflow_run|schedule):/m);
-for (const input of ['app_commit', 'app_tree', 'rollback_deploy_id', 'run_reference']) {
+assert.match(workflow, /^permissions:\n  actions: read\n  contents: read$/m);
+for (const input of [
+  'controller_commit', 'app_commit', 'app_tree', 'rollback_deploy_id', 'run_reference'
+]) {
   assert.match(workflow, new RegExp(`^      ${input}:$`, 'm'));
 }
 for (const forbiddenInput of ['site_id', 'origin', 'project_ref', 'clinic_id']) {
   assert.doesNotMatch(workflow, new RegExp(`^      ${forbiddenInput}:$`, 'm'));
 }
-assert.match(workflow, /repository: apisarit\/chananya-clinical-wellness-os/);
-assert.match(workflow, /ref: \$\{\{ inputs\.app_commit \}\}/);
-assert.match(workflow, /rev-parse 'HEAD\^\{tree\}'[\s\S]*CNYOS_EXPECTED_SOURCE_TREE/);
-assert.match(workflow, /environment:\n\s+name: cnyos-staging-publish/);
-assert.match(workflow, /GITHUB_REF_PROTECTED.*true/);
+const workflowJobSlice = name => {
+  const marker = `  ${name}:\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `workflow job ${name} is missing`);
+  const following = workflow.slice(start + marker.length);
+  const next = following.match(/^  [A-Za-z0-9_-]+:\n/m);
+  return workflow.slice(start, next ? start + marker.length + next.index : workflow.length);
+};
+const buildJob = workflowJobSlice('build_candidate_artifact');
+const protectedJob = workflowJobSlice('exact-staging-deploy-uat');
+const sourceReadSecretName = 'CNYOS_APP_SOURCE_READ_TOKEN';
+const secretReferences = value => [...value.matchAll(
+  /\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}/g
+)].map(match => match[1]);
+const privateCheckoutStep = buildJob.match(
+  /      - name: Checkout exact private application commit\n[\s\S]*?(?=\n      - name:)/
+)?.[0];
+
+assert.match(buildJob, /^  build_candidate_artifact:\n    needs: admit-controller-runtime$/m);
+assert.match(buildJob, /repository: apisarit\/chananya-clinical-wellness-os/);
+assert.match(buildJob, /ref: \$\{\{ inputs\.app_commit \}\}/);
+assert.match(buildJob, /rev-parse 'HEAD\^\{tree\}'[\s\S]*CNYOS_EXPECTED_SOURCE_TREE/);
+assert.doesNotMatch(buildJob, /^    environment:/m);
+assert.ok(privateCheckoutStep, 'private application checkout step is missing');
+assert.match(privateCheckoutStep,
+  /uses: actions\/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5\.0\.1/);
+assert.match(privateCheckoutStep, /repository: apisarit\/chananya-clinical-wellness-os/);
+assert.match(privateCheckoutStep, /ref: \$\{\{ inputs\.app_commit \}\}/);
+assert.match(privateCheckoutStep, /path: candidate-source/);
+assert.match(privateCheckoutStep, /fetch-depth: 1/);
+assert.deepEqual(secretReferences(buildJob), [sourceReadSecretName]);
+assert.deepEqual(secretReferences(privateCheckoutStep), [sourceReadSecretName]);
+assert.match(privateCheckoutStep,
+  /token: \$\{\{ secrets\.CNYOS_APP_SOURCE_READ_TOKEN \}\}/);
+assert.match(privateCheckoutStep, /persist-credentials: false/);
+assert.doesNotMatch(buildJob.replace(privateCheckoutStep, ''),
+  /CNYOS_APP_SOURCE_READ_TOKEN|\$\{\{\s*secrets\./);
+for (const protectedName of EXACT_STAGING_SECRET_NAMES) {
+  assert.doesNotMatch(buildJob, new RegExp(protectedName));
+}
+assert.equal((buildJob.match(/\$\{\{ vars\.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY \}\}/g) || [])
+  .length, 1);
+assert.match(buildJob, /artifact_id: \$\{\{ steps\.upload_candidate\.outputs\.artifact-id \}\}/);
+assert.match(buildJob,
+  /artifact_digest: \$\{\{ steps\.upload_candidate\.outputs\.artifact-digest \}\}/);
+assert.match(buildJob,
+  /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4\.6\.2/);
+assert.match(buildJob, /id: upload_candidate/);
+assert.match(buildJob, /if-no-files-found: error/);
+assert.match(buildJob, /include-hidden-files: false/);
+assert.match(buildJob, /overwrite: false/);
+assert.match(buildJob, /retention-days: 1/);
+assert.match(buildJob, /20261013230000_staging_forward_reconciliation_ce4cee52\.sql/);
+assert.match(buildJob, /20261017005000_audit_logs_governance_admin_read\.sql/);
+assert.match(buildJob, /database-input-manifest\.json/);
+
+assert.match(protectedJob,
+  /^    needs:\n      - admit-controller-runtime\n      - build_candidate_artifact$/m);
+assert.match(protectedJob, /environment:\n\s+name: cnyos-staging-publish/);
+assert.match(protectedJob, /reconcile-exact-staging-database\.mjs/);
+assert.match(protectedJob,
+  /CNYOS_STAGING_DATABASE_URL: \$\{\{ secrets\.CNYOS_STAGING_DATABASE_URL \}\}/);
+assert.ok(protectedJob.indexOf('reconcile-exact-staging-database.mjs') <
+  protectedJob.indexOf('exact-staging-publish.mjs attempt'));
+assert.doesNotMatch(protectedJob, /repository: apisarit\/chananya-clinical-wellness-os/);
+assert.doesNotMatch(protectedJob, /candidate-source/);
+assert.doesNotMatch(protectedJob, /CNYOS_APP_SOURCE_READ_TOKEN/);
+assert.equal((workflow.match(/CNYOS_APP_SOURCE_READ_TOKEN/g) || []).length, 1);
+assert.doesNotMatch(protectedJob,
+  /npm run check|npm run build:staging-artifact|materialize-staging-functions\.mjs/);
+assert.equal((protectedJob.match(/uses: actions\/checkout@/g) || []).length, 1);
+assert.match(protectedJob, /ref: \$\{\{ inputs\.controller_commit \}\}/);
+assert.match(protectedJob,
+  /uses: actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4\.3\.0/);
+assert.match(protectedJob,
+  /artifact-ids: \$\{\{ needs\.build_candidate_artifact\.outputs\.artifact_id \}\}/);
+assert.match(protectedJob, /merge-multiple: true/);
+assert.match(protectedJob, /CNYOS_CANDIDATE_ARTIFACT_ID" =~ \^\[0-9\]\+\$/);
+assert.match(protectedJob,
+  /CNYOS_CANDIDATE_ARTIFACT_DIGEST" =~ \^\[0-9a-f\]\{64\}\$/);
+assert.doesNotMatch(protectedJob, /name: cnyos-exact-staging-candidate-/);
+assert.equal((protectedJob.match(/\$\{\{ vars\.CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY \}\}/g) || [])
+  .length, 1);
+const downloadIndex = protectedJob.indexOf('uses: actions/download-artifact@');
+const transportDigestIndex = protectedJob.indexOf(
+  '- name: Fail closed on the immutable artifact transport digest');
+const downloadedVerificationIndex = protectedJob.indexOf(
+  '- name: Verify downloaded closed-world artifact before any publish or UAT secret');
+const firstProtectedSecretIndex = protectedJob.indexOf('${{ secrets.');
+assert.ok(downloadIndex >= 0 && downloadIndex < transportDigestIndex,
+  'the immutable artifact must be downloaded before transport digest verification');
+assert.ok(transportDigestIndex < downloadedVerificationIndex,
+  'the transport digest must pass before closed-world content verification');
+assert.ok(downloadedVerificationIndex < firstProtectedSecretIndex,
+  'downloaded artifact verification must complete before the first protected secret');
+const protectedPrefix = protectedJob.slice(0, firstProtectedSecretIndex);
+assert.doesNotMatch(protectedPrefix,
+  /candidate-source|npm run build|materialize-staging-functions|chananya-clinical-wellness-os/);
+assert.match(protectedPrefix, /verifyExactStagingArtifact\(loadExactStagingConfig\(\)\)/);
+assert.match(protectedPrefix,
+  /actions\/artifacts\/\$\{CNYOS_CANDIDATE_ARTIFACT_ID:\?\}\/zip/);
+assert.match(protectedPrefix,
+  /test "\$observed_digest" = "\$CNYOS_CANDIDATE_ARTIFACT_DIGEST"/);
+assert.doesNotMatch(workflow, /GITHUB_REF_PROTECTED/);
+assert.match(workflow, /GITHUB_ACTOR" = "apisarit"/);
+assert.match(workflow, /GITHUB_ACTOR_ID" = "216305243"/);
+assert.match(workflow, /GITHUB_TRIGGERING_ACTOR" = "\$GITHUB_ACTOR"/);
 assert.match(workflow, /GITHUB_RUN_ATTEMPT.*1/);
-assert.match(workflow, /XDG_CONFIG_HOME: \$\{\{ runner\.temp \}\}\/cnyos-netlify-config/);
-assert.match(workflow, /XDG_CACHE_HOME: \$\{\{ runner\.temp \}\}\/cnyos-netlify-cache/);
-assert.match(workflow, /mkdir -m 700 "\$XDG_CONFIG_HOME" "\$XDG_CACHE_HOME"/);
+assert.match(workflow, /CNYOS_EXPECTED_CONTROLLER_COMMIT" = "\$GITHUB_SHA"/);
+assert.match(workflow, /GITHUB_WORKFLOW_SHA" = "\$GITHUB_SHA"/);
+assert.match(workflow, /git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
+for (const [name, job] of [
+  ['build_candidate_artifact', buildJob], ['exact-staging-deploy-uat', protectedJob]
+]) {
+  const jobHeader = job.match(new RegExp(`^  ${name}:\\n[\\s\\S]*?^    steps:\\n`, 'm'))?.[0];
+  assert.ok(jobHeader, `${name} header is missing`);
+  assert.doesNotMatch(jobHeader, /\$\{\{\s*runner\.temp\s*\}\}/,
+    'runner context is unavailable in job-level env');
+}
+assert.match(workflow,
+  /printf 'XDG_CONFIG_HOME=%s\/cnyos-netlify-config\\n' \\\n\s+"\$\{RUNNER_TEMP:\?\}" >> "\$\{GITHUB_ENV:\?\}"/);
+assert.match(workflow,
+  /printf 'XDG_CACHE_HOME=%s\/cnyos-netlify-cache\\n' \\\n\s+"\$\{RUNNER_TEMP:\?\}" >> "\$\{GITHUB_ENV:\?\}"/);
+assert.match(workflow,
+  /mkdir -m 700 \\\n\s+"\$\{RUNNER_TEMP:\?\}\/cnyos-netlify-config" \\\n\s+"\$\{RUNNER_TEMP:\?\}\/cnyos-netlify-cache"/);
 assert.doesNotMatch(workflow, /npx\s|npm exec|--yes/);
 assert.match(workflow, /exact-staging-publish\.mjs attempt/);
 assert.match(workflow, /if: \$\{\{ always\(\) && steps\.publish_attempt\.outcome != 'skipped' \}\}/);
@@ -295,7 +643,7 @@ assert.match(workflow, /hsmnjwxurlmsizndjlun/);
 assert.match(workflow, /qptxnrldzzinlcabudjv/);
 assert.match(workflow, /7da5e39e-580d-44f1-8623-605313e2fb2b/);
 assert.match(workflow, /run-exact-staging-clinical-uat\.mjs/);
-assert.match(workflow, /retention-days: 7/);
+assert.match(protectedJob, /retention-days: 7/);
 assert.doesNotMatch(workflow, /id-token:\s*write/);
 
 for (const role of [
@@ -304,13 +652,31 @@ for (const role of [
 ]) assert.match(runner, new RegExp(`key: '${role}'`));
 for (const operation of [
   'book_clinic_appointment', 'check_in_clinic_appointment', 'save_ttm_opd_history',
-  'create_clinical_consult_request', 'create_ipd_admission_request',
-  'append_ipd_clinical_entry', 'create_atomic_prescription_handoff',
+  'create_clinical_consult_request', 'transition_clinical_consult_request',
+  'get_clinical_consult_request', 'create_ipd_admission_request',
+  'transition_ipd_admission', 'get_ipd_admission', 'append_ipd_clinical_entry',
+  'create_atomic_prescription_handoff',
   'transition_atomic_prescription_dispensing', 'issue_atomic_dispensing_invoice',
   'record_atomic_invoice_payment'
 ]) assert.match(runner, new RegExp(operation));
+for (const expectedContract of [
+  'expectDeniedWithoutMutation', 'CONSULT_RECEIVER_MUST_DIFFER_FROM_SENDER',
+  'RECEPTION_ROLE_REQUIRED', 'medication_reconciliation', 'discharge_summary',
+  'prepare_discharge', 'confirm_discharge', 'readAdminAuditHistory',
+  'AUDIT_METADATA_KEYS', 'CNYOS_EXACT_STAGING_ADMIN_AUDIT_PHI_LEAK',
+  'CNYOS_EXACT_STAGING_ADMIN_AUDIT_ACTOR_OR_TRANSITION_INVALID',
+  'CNYOS_EXACT_STAGING_MUTATION_COUNT_INVALID'
+]) assert.match(runner, new RegExp(expectedContract));
+assert.match(runner, /consultReadback = role => readRpc\(as\(role\), 'get_clinical_consult_request'/);
+assert.match(runner, /ipdReadback = role => readRpc\(as\(role\), 'get_ipd_admission'/);
+assert.match(runner, /budget\.records\.length !== config\.limits\.totalMutations/);
 assert.match(runner, /realPhiUsed: false/);
 assert.match(runner, /SYNTHETIC-E2E/);
+assert.match(runner, /EXACT_STAGING_SYNTHETIC_HN_PATTERN/);
+assert.match(runner, /hnGeneratedByServer: true/);
+assert.match(runner, /patient\.payment_right !== 'SYNTHETIC-E2E'/);
+assert.match(runner, /patient\.email != null/);
+assert.match(runner, /patient\.created_by/);
 assert.match(runner, /browserOpdWrites/);
 assert.match(runner, /stoppedWithoutRetry: true/);
 assert.match(runner, /route\.fetch\(\{ timeout: config\.limits\.requestTimeoutMs \}\)/);
@@ -327,25 +693,45 @@ assert.match(runner, /rawSha256: receiptBytes \? sha256\(receiptBytes\) : null/)
 assert.match(runner, /deployReceiptCaptured: receipt !== null/);
 
 const binding = {
-  kind: 'cnyos_exact_staging_candidate_binding', stagingOnly: true,
+  schemaVersion: 1, kind: 'cnyos_exact_staging_candidate_binding', stagingOnly: true,
   productionAuthorized: false, source: { commit, tree },
+  controller: {
+    repository: 'apisarit/cnyos-staging-deployment-control',
+    commit: controllerCommit,
+    workflowPath: '.github/workflows/cnyos-exact-staging-deploy-uat.yml'
+  },
   target: {
     siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin,
-    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef
+    deploymentId: EXACT_STAGING_TARGET.deploymentId,
+    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    clinicId: EXACT_STAGING_TARGET.clinicId
   }, rollbackBaselineDeployId: rollback,
-  artifact: verified.artifact
+  artifact: verified.artifact,
+  functionEnvironment,
+  limits: config.limits,
+  preparedAt: '2026-10-13T00:00:30.000Z'
 };
 const baseline = {
-  kind: 'cnyos_exact_staging_rollback_baseline',
-  siteId: EXACT_STAGING_TARGET.netlifySiteId, deployId: rollback
+  schemaVersion: 1, kind: 'cnyos_exact_staging_rollback_baseline', stagingOnly: true,
+  siteId: EXACT_STAGING_TARGET.netlifySiteId, origin: EXACT_STAGING_TARGET.origin,
+  deployId: rollback,
+  exactDeployOrigin:
+    `https://${rollback}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app`,
+  observedAt: '2026-10-13T00:00:00.000Z'
 };
 const intent = createExactStagingPublishIntent(config, binding, baseline, {
   now: '2026-10-13T00:01:00.000Z', workflowRunId: '12345'
 });
+assert.equal(intent.controller.commit, controllerCommit);
 assert.equal(intent.automaticRollbackAuthorized, false);
+assert.throws(() => createExactStagingPublishIntent(config, {
+  ...binding,
+  controller: { ...binding.controller, commit: '8'.repeat(40) }
+}, baseline), /CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
 for (const artifactKey of [
   'deployManifestSha256', 'runtimeManifestSha256',
-  'functionManifestSha256', 'functionTreeSha256'
+  'functionManifestSha256', 'functionTreeSha256',
+  'databaseManifestSha256', 'databaseTreeSha256'
 ]) {
   assert.throws(() => createExactStagingPublishIntent(config, {
     ...binding, artifact: { ...binding.artifact, [artifactKey]: 'not-a-sha256' }
@@ -381,6 +767,7 @@ assert.equal(deriveExactStagingTerminalStatus('UNCERTAIN', 'FAIL', false), 'UNCE
 
 const publishWork = path.join(root, 'publish-work');
 const publishConfig = loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
   CNYOS_EXPECTED_SOURCE_COMMIT: commit,
   CNYOS_EXPECTED_SOURCE_TREE: tree,
   CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
@@ -419,6 +806,97 @@ const attemptEvidence = await executeExactStagingPublishAttempt(publishConfig, t
   }
 });
 assert.equal(attemptEvidence.cliOutcome, 'EXIT_NONZERO');
+const evidencePath = name => path.join(publishConfig.uploadDirectory, name);
+const overwriteEvidence = async (name, value) => {
+  await fs.writeFile(evidencePath(name), `${JSON.stringify(value)}\n`, { mode: 0o600 });
+  await fs.chmod(evidencePath(name), 0o600);
+};
+const readEvidence = async name => JSON.parse(await fs.readFile(evidencePath(name), 'utf8'));
+const persistedIntent = await readEvidence('publish-intent.json');
+const persistedAttempt = await readEvidence('publish-attempt.json');
+const expectPreObservationRejection = async expected => {
+  await assert.rejects(() => reconcileExactStagingPublish(publishConfig, token, {
+    attempts: 1, delayMs: 0,
+    fetchImpl: async () => { throw new Error('observation must not run'); }
+  }), expected);
+};
+
+await overwriteEvidence('candidate-binding.json', {
+  ...binding,
+  artifact: { ...binding.artifact, runtimeManifestSha256: '0'.repeat(64) }
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+await overwriteEvidence('candidate-binding.json', binding);
+
+for (const mutate of [
+  value => ({ ...value, artifact: { ...value.artifact,
+    source: { ...value.artifact.source, commit: '8'.repeat(40) } } }),
+  value => ({ ...value, artifact: { ...value.artifact, runtimeFileCount: 0 } }),
+  value => ({ ...value, functionEnvironment: { ...value.functionEnvironment,
+    exactValuesSha256: '0'.repeat(64) } }),
+  value => ({ ...value, limits: { ...value.limits, authUsers: 6 } })
+]) {
+  await overwriteEvidence('candidate-binding.json', mutate(structuredClone(binding)));
+  await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+  await overwriteEvidence('candidate-binding.json', binding);
+}
+
+await overwriteEvidence('rollback-baseline.json', {
+  ...baseline, deployId: 'e'.repeat(24),
+  exactDeployOrigin:
+    `https://${'e'.repeat(24)}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app`
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+await overwriteEvidence('rollback-baseline.json', baseline);
+
+await overwriteEvidence('rollback-baseline.json', {
+  ...baseline, observedAt: 'not-an-iso-timestamp'
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_BINDING_INVALID/);
+await overwriteEvidence('rollback-baseline.json', baseline);
+
+const tamperedIntent = {
+  ...persistedIntent,
+  artifact: { ...persistedIntent.artifact, runtimeManifestSha256: '0'.repeat(64) }
+};
+await overwriteEvidence('publish-intent.json', tamperedIntent);
+await overwriteEvidence('publish-attempt.json', {
+  ...persistedAttempt,
+  intentSha256: sha256(Buffer.from(JSON.stringify(tamperedIntent)))
+});
+await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+await overwriteEvidence('publish-intent.json', persistedIntent);
+await overwriteEvidence('publish-attempt.json', persistedAttempt);
+
+const expectCoordinatedIntentRejection = async mutate => {
+  const changedIntent = mutate(structuredClone(persistedIntent));
+  await overwriteEvidence('publish-intent.json', changedIntent);
+  await overwriteEvidence('publish-attempt.json', {
+    ...persistedAttempt,
+    intentSha256: sha256(Buffer.from(JSON.stringify(changedIntent)))
+  });
+  await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+  await overwriteEvidence('publish-intent.json', persistedIntent);
+  await overwriteEvidence('publish-attempt.json', persistedAttempt);
+};
+for (const mutate of [
+  value => ({ ...value, automaticRollbackAttempted: true }),
+  value => ({ ...value, operation: { ...value.operation, cliTimeoutSeconds: 121 } }),
+  value => ({ ...value, run: { ...value.run, workflowRunId: 'fabricated' } })
+]) await expectCoordinatedIntentRejection(mutate);
+
+for (const mutate of [
+  value => ({ ...value, outputSecretBoundaryViolated: true }),
+  value => ({ ...value, cliOutcome: 'EXIT_ZERO', exitCode: 1 }),
+  value => ({ ...value, stdoutByteLength: 1, stdoutSha256: null }),
+  value => ({ ...value, retryCount: 1 }),
+  value => ({ ...value, completedAt: '2026-10-13T00:09:59.000Z' })
+]) {
+  await overwriteEvidence('publish-attempt.json', mutate(structuredClone(persistedAttempt)));
+  await expectPreObservationRejection(/CNYOS_EXACT_STAGING_PUBLISH_CHAIN_INVALID/);
+  await overwriteEvidence('publish-attempt.json', persistedAttempt);
+}
+
 const candidateDeployId = 'd'.repeat(24);
 const runtimeManifestBytes = await fs.readFile(path.join(dist, 'runtime-publish-manifest.json'));
 const response = value => new Response(typeof value === 'string' || Buffer.isBuffer(value)
@@ -449,5 +927,564 @@ assert.equal(reconciled.cliOutcome, 'EXIT_NONZERO');
 assert.equal(existsSync(path.join(publishConfig.privateDirectory,
   'netlify-deploy-receipt.json')), true);
 assert.match(await fs.readFile(githubOutput, 'utf8'), /publish_reconciled=true/);
+const normalizedReceipt = JSON.parse(await fs.readFile(path.join(publishConfig.privateDirectory,
+  'netlify-deploy-receipt.json'), 'utf8'));
+await overwriteEvidence('deploy-receipt.json', normalizedReceipt);
+const roleKeys = [
+  'reception', 'source_practitioner', 'attending', 'pharmacy_reviewer',
+  'pharmacy_dispenser', 'billing', 'admin'
+];
+const roleTuples = {
+  reception: ['reception', 'staff', 'reception'],
+  source_practitioner: ['practitioner', 'staff', 'practitioner'],
+  attending: ['doctor', 'staff', 'doctor'],
+  pharmacy_reviewer: ['pharmacy', 'staff', 'pharmacy'],
+  pharmacy_dispenser: ['pharmacy', 'staff', 'pharmacy'],
+  billing: ['billing', 'staff', 'billing'],
+  admin: ['viewer', 'admin', 'admin']
+};
+const accounts = Object.fromEntries(roleKeys.map((key, index) => [key, {
+  userId: `${String(index + 1).repeat(8)}-${String(index + 1).repeat(4)}-4${String(index + 1).repeat(3)}-a${String(index + 1).repeat(3)}-${String(index + 1).repeat(12)}`,
+  emailSha256: String(index + 1).repeat(64),
+  profileRole: roleTuples[key][0], systemRole: roleTuples[key][1],
+  clinicRole: roleTuples[key][2], syntheticMarkerVerified: true,
+  authenticatedSessionVerified: true
+}]));
+const actorIds = Object.fromEntries(roleKeys.map(key => [key, accounts[key].userId]));
+const syntheticPatient = {
+  id: '88888888-8888-4888-a888-888888888888',
+  hn: 'CHANANYASTG-00000001', syntheticRunSuffix: publishConfig.runId.slice(-8),
+  hnGeneratedByServer: true, clinicId: EXACT_STAGING_TARGET.clinicId,
+  paymentRight: 'SYNTHETIC-E2E', realIdentifiersAbsent: true
+};
+const fixtureEvidence = {
+  schemaVersion: 1, kind: 'cnyos_exact_staging_synthetic_fixture', status: 'PASS',
+  syntheticOnly: true, realPhiUsed: false, controller: binding.controller,
+  source: { commit, tree }, deployId: candidateDeployId, runId: publishConfig.runId,
+  accounts, distinctAccountCount: roleKeys.length, patient: syntheticPatient,
+  limits: publishConfig.limits
+};
+const mutationRecords = [];
+const addMutation = (name, authority, resource, status = 200) => {
+  mutationRecords.push({
+    ordinal: mutationRecords.length + 1, name, authority, resource,
+    dispatched: true, status, uncertain: false
+  });
+};
+for (const _role of roleKeys) {
+  addMutation('create_auth_user', 'service_role', '/auth/v1/admin/users');
+  addMutation('upsert_profile', 'service_role', '/rest/v1/profiles');
+  addMutation('insert_clinic_membership', 'service_role',
+    '/rest/v1/clinic_memberships', 201);
+}
+addMutation('upsert_product_master', 'pharmacy_reviewer',
+  '/rest/v1/rpc/upsert_product_master');
+addMutation('set_clinic_product_price', 'billing', '/rest/v1/rpc/set_clinic_product_price');
+addMutation('insert_inventory_lot', 'service_role', '/rest/v1/inventory_lots', 201);
+addMutation('upsert_patient_registration', 'reception',
+  '/rest/v1/rpc/upsert_patient_registration');
+addMutation('create_practitioner_schedule', 'reception',
+  '/rest/v1/rpc/create_practitioner_schedule');
+addMutation('book_clinic_appointment', 'reception', '/rest/v1/rpc/book_clinic_appointment');
+addMutation('check_in_clinic_appointment', 'reception',
+  '/rest/v1/rpc/check_in_clinic_appointment');
+addMutation('set_clinic_appointment_status', 'source_practitioner',
+  '/rest/v1/rpc/set_clinic_appointment_status');
+addMutation('save_ttm_opd_history', 'source_practitioner',
+  '/rest/v1/rpc/save_ttm_opd_history');
+addMutation('save_ttm_opd_history', 'source_practitioner',
+  '/rest/v1/rpc/save_ttm_opd_history');
+addMutation('create_clinical_consult_request', 'source_practitioner',
+  '/rest/v1/rpc/create_clinical_consult_request');
+addMutation('transition_clinical_consult_request', 'source_practitioner',
+  '/rest/v1/rpc/transition_clinical_consult_request', 400);
+for (let index = 0; index < 3; index += 1) {
+  addMutation('transition_clinical_consult_request', 'attending',
+    '/rest/v1/rpc/transition_clinical_consult_request');
+}
+addMutation('create_ipd_admission_request', 'source_practitioner',
+  '/rest/v1/rpc/create_ipd_admission_request');
+addMutation('transition_ipd_admission', 'source_practitioner',
+  '/rest/v1/rpc/transition_ipd_admission', 400);
+addMutation('transition_ipd_admission', 'reception', '/rest/v1/rpc/transition_ipd_admission');
+addMutation('transition_ipd_admission', 'attending', '/rest/v1/rpc/transition_ipd_admission');
+for (let index = 0; index < 3; index += 1) {
+  addMutation('append_ipd_clinical_entry', 'attending',
+    '/rest/v1/rpc/append_ipd_clinical_entry');
+}
+addMutation('transition_ipd_admission', 'attending', '/rest/v1/rpc/transition_ipd_admission');
+addMutation('transition_ipd_admission', 'reception', '/rest/v1/rpc/transition_ipd_admission');
+addMutation('create_atomic_prescription_handoff', 'source_practitioner',
+  '/rest/v1/rpc/create_atomic_prescription_handoff');
+addMutation('transition_atomic_prescription_dispensing', 'pharmacy_reviewer',
+  '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+addMutation('transition_atomic_prescription_dispensing', 'pharmacy_dispenser',
+  '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+addMutation('transition_atomic_prescription_dispensing', 'pharmacy_dispenser',
+  '/rest/v1/rpc/transition_atomic_prescription_dispensing');
+addMutation('issue_atomic_dispensing_invoice', 'billing',
+  '/rest/v1/rpc/issue_atomic_dispensing_invoice');
+addMutation('record_atomic_invoice_payment', 'billing',
+  '/rest/v1/rpc/record_atomic_invoice_payment');
+assert.equal(mutationRecords.length, publishConfig.limits.totalMutations);
+const ipdEntryIds = [101, 102, 103, 104, 105];
+const ipdEventIds = [201, 202, 203, 204, 205, 206, 207, 208];
+const uatEvidence = {
+  schemaVersion: 1, kind: 'cnyos_exact_staging_role_separated_uat', status: 'PASS',
+  stagingOnly: true, productionAuthorized: false, controller: binding.controller,
+  source: { commit, tree }, deployment: normalizedReceipt,
+  target: {
+    origin: EXACT_STAGING_TARGET.origin, siteId: EXACT_STAGING_TARGET.netlifySiteId,
+    supabaseProjectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    clinicId: EXACT_STAGING_TARGET.clinicId
+  },
+  journey: {
+    syntheticOnly: true, realPhiUsed: false, runId: publishConfig.runId,
+    actorIds, patient: syntheticPatient,
+    opdBrowserProof: {
+      contexts: 3, saveReloadAmend: true, writes: publishConfig.limits.browserOpdWrites,
+      writeLedger: {
+        limit: publishConfig.limits.browserOpdWrites,
+        dispatched: publishConfig.limits.browserOpdWrites, contextCount: 3,
+        perContext: [
+          { contextOrdinal: 1, writes: 1 },
+          { contextOrdinal: 2, writes: 1 },
+          { contextOrdinal: 3, writes: 0 }
+        ],
+        records: [
+          { ordinal: 1, contextOrdinal: 1, rpc: 'save_ttm_opd_history',
+            reservedBeforeFetch: true },
+          { ordinal: 2, contextOrdinal: 2, rpc: 'save_ttm_opd_history',
+            reservedBeforeFetch: true }
+        ]
+      }
+    },
+    consult: {
+      id: '99999999-9999-4999-a999-999999999999',
+      status: 'completed',
+      version: 4,
+      senderActorId: actorIds.source_practitioner,
+      receiverActorId: actorIds.attending,
+      wrongRole: {
+        status: 'DENIED', expectedError: 'CONSULT_RECEIVER_MUST_DIFFER_FROM_SENDER',
+        noMutationReadbackVerified: true
+      },
+      participantDetailReadbackVerified: true,
+      eventTimelineReadbackVerified: true,
+      eventTypes: ['requested', 'acknowledged', 'accepted', 'completed'],
+      eventDetails: [
+        { eventType: 'requested', fromStatus: null, toStatus: 'requested',
+          resultingVersion: 1, actorId: actorIds.source_practitioner },
+        { eventType: 'acknowledged', fromStatus: 'requested', toStatus: 'acknowledged',
+          resultingVersion: 2, actorId: actorIds.attending },
+        { eventType: 'accepted', fromStatus: 'acknowledged', toStatus: 'accepted',
+          resultingVersion: 3, actorId: actorIds.attending },
+        { eventType: 'completed', fromStatus: 'accepted', toStatus: 'completed',
+          resultingVersion: 4, actorId: actorIds.attending }
+      ]
+    },
+    admission: {
+      id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+      status: 'discharged',
+      version: 8,
+      sourceActorId: actorIds.source_practitioner,
+      attendingActorId: actorIds.attending,
+      placementAndDischargeActorId: actorIds.reception,
+      wrongRole: {
+        status: 'DENIED', expectedError: 'RECEPTION_ROLE_REQUIRED',
+        noMutationReadbackVerified: true
+      },
+      timelineReadbackVerified: true,
+      sourceAdmissionRequestOnlyVerified: true,
+      receptionClinicalEntriesAndActorIdsRedacted: true,
+      entryTypes: [
+        'admission_request', 'admission_note', 'progress_note',
+        'medication_reconciliation', 'discharge_summary'
+      ],
+      eventTypes: [
+        'requested', 'bed_assigned', 'admitted', 'entry_appended', 'entry_appended',
+        'entry_appended', 'discharge_ready', 'discharged'
+      ],
+      entryDetails: [
+        { entryId: ipdEntryIds[0], entryType: 'admission_request',
+          authorId: actorIds.source_practitioner, admissionVersion: 1 },
+        { entryId: ipdEntryIds[1], entryType: 'admission_note',
+          authorId: actorIds.attending, admissionVersion: 3 },
+        { entryId: ipdEntryIds[2], entryType: 'progress_note',
+          authorId: actorIds.attending, admissionVersion: 4 },
+        { entryId: ipdEntryIds[3], entryType: 'medication_reconciliation',
+          authorId: actorIds.attending, admissionVersion: 5 },
+        { entryId: ipdEntryIds[4], entryType: 'discharge_summary',
+          authorId: actorIds.attending, admissionVersion: 6 }
+      ],
+      eventDetails: [
+        { eventId: ipdEventIds[0], eventType: 'requested', fromStatus: null,
+          toStatus: 'requested', resultingVersion: 1,
+          actorId: actorIds.source_practitioner, clinicalEntryId: ipdEntryIds[0] },
+        { eventId: ipdEventIds[1], eventType: 'bed_assigned', fromStatus: 'requested',
+          toStatus: 'bed_assigned', resultingVersion: 2,
+          actorId: actorIds.reception, clinicalEntryId: null },
+        { eventId: ipdEventIds[2], eventType: 'admitted', fromStatus: 'bed_assigned',
+          toStatus: 'admitted', resultingVersion: 3,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[1] },
+        { eventId: ipdEventIds[3], eventType: 'entry_appended', fromStatus: 'admitted',
+          toStatus: 'admitted', resultingVersion: 4,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[2] },
+        { eventId: ipdEventIds[4], eventType: 'entry_appended', fromStatus: 'admitted',
+          toStatus: 'admitted', resultingVersion: 5,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[3] },
+        { eventId: ipdEventIds[5], eventType: 'entry_appended', fromStatus: 'admitted',
+          toStatus: 'admitted', resultingVersion: 6,
+          actorId: actorIds.attending, clinicalEntryId: ipdEntryIds[4] },
+        { eventId: ipdEventIds[6], eventType: 'discharge_ready', fromStatus: 'admitted',
+          toStatus: 'discharge_ready', resultingVersion: 7,
+          actorId: actorIds.attending, clinicalEntryId: null },
+        { eventId: ipdEventIds[7], eventType: 'discharged', fromStatus: 'discharge_ready',
+          toStatus: 'discharged', resultingVersion: 8,
+          actorId: actorIds.reception, clinicalEntryId: null }
+      ]
+    },
+    pharmacy: {
+      separated: true, reviewerActorId: actorIds.pharmacy_reviewer,
+      dispenserActorId: actorIds.pharmacy_dispenser
+    },
+    billing: { grandTotal: 800, invoiceStatus: 'paid', actorId: actorIds.billing },
+    admin: {
+      actorId: actorIds.admin, separatelyAuthenticated: true,
+      auditHistoryReadbackVerified: true, auditPhiRedacted: true,
+      auditClinicalPayloadRedacted: true,
+      auditActorAndTransitionReadbackVerified: true,
+      auditRowCount: 12,
+      auditActionCounts: {
+        create_clinical_consult_request: 1,
+        transition_clinical_consult_request: 3,
+        create_ipd_admission_request: 1,
+        transition_ipd_admission: 4,
+        append_ipd_clinical_entry: 3
+      }
+    }
+  },
+  mutationBudget: {
+    limit: publishConfig.limits.totalMutations,
+    dispatched: publishConfig.limits.totalMutations,
+    writeRetries: 0,
+    records: mutationRecords
+  },
+  startedAt: '2026-10-13T00:11:01.000Z',
+  completedAt: '2026-10-13T00:11:30.000Z'
+};
+await overwriteEvidence('fixture-evidence.json', fixtureEvidence);
+await overwriteEvidence('uat-evidence.json', uatEvidence);
+const databasePhase = {
+  exitCode: 0, signal: null, stdoutBytes: 0, stdoutSha256: null,
+  stderrBytes: 0, stderrSha256: null
+};
+const databaseEvidence = {
+  schemaVersion: 1, kind: 'cnyos_exact_staging_database_reconciliation',
+  status: 'PASS', result: 'APPLIED_VERIFIED', stagingOnly: true,
+  productionAuthorized: false, resetAttempted: false,
+  historicalLedgerReplayed: false, realPatientDataRead: false,
+  automaticRollbackAttempted: false, forwardRemediationRequiredOnFailure: true,
+  nonAtomicPhaseBoundary: true, controller: { commit: controllerCommit },
+  source: { commit, tree }, target: {
+    projectRef: EXACT_STAGING_TARGET.supabaseProjectRef,
+    systemIdentifier: '7666007964130682852', database: 'postgres'
+  },
+  artifact: {
+    databaseManifestSha256: verified.artifact.databaseManifestSha256,
+    databaseTreeSha256: verified.artifact.databaseTreeSha256,
+    reconciliationArtifactSha256: '6'.repeat(64), auditMigrationSha256: '7'.repeat(64),
+    cleanupArtifactSha256:
+      'd9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15'
+  },
+  attemptId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+  forwardAttemptId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
+  auditAttemptId: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',
+  phases: Object.fromEntries([
+    'receiptProbe', 'cleanupProbe', 'forwardApply', 'forwardVerify',
+    'auditApply', 'auditReceipt', 'auditVerify'
+  ].map(name => [name, databasePhase])),
+  startedAt: '2026-10-13T00:00:31.000Z', completedAt: '2026-10-13T00:00:59.000Z'
+};
+
+const failureFinalizerConfig = loadExactStagingConfig({
+  CNYOS_EXPECTED_CONTROLLER_COMMIT: controllerCommit,
+  CNYOS_EXPECTED_SOURCE_COMMIT: commit,
+  CNYOS_EXPECTED_SOURCE_TREE: tree,
+  CNYOS_EXPECTED_ROLLBACK_DEPLOY_ID: rollback,
+  CNYOS_STAGING_RUN_REFERENCE: 'exact-staging-db-terminal-failure-20261017',
+  CNYOS_STAGING_ARTIFACT_DIRECTORY: artifact,
+  CNYOS_EXACT_STAGING_WORK_DIRECTORY: path.join(root, 'database-terminal-failure')
+});
+await fs.mkdir(failureFinalizerConfig.uploadDirectory, { recursive: true, mode: 0o700 });
+const failedDatabaseEvidence = JSON.parse(await fs.readFile(path.join(
+  failedRunnerConfig.uploadDirectory, 'database-reconciliation.json'), 'utf8'));
+for (const [name, value] of [
+  ['candidate-binding.json', binding],
+  ['rollback-baseline.json', baseline],
+  ['database-reconciliation.json', failedDatabaseEvidence]
+]) {
+  await fs.writeFile(path.join(failureFinalizerConfig.uploadDirectory, name),
+    `${JSON.stringify(value)}\n`, { mode: 0o600, flag: 'wx' });
+}
+const databaseFailureTerminal = await finalizeExactStagingEvidence(failureFinalizerConfig, {
+  now: () => '2026-10-17T00:02:00.000Z'
+});
+assert.equal(databaseFailureTerminal.status, 'FAIL');
+assert.equal(databaseFailureTerminal.evidenceSetValid, true);
+assert.equal(databaseFailureTerminal.publishReconciliation.status, 'NOT_RUN');
+assert.deepEqual(databaseFailureTerminal.expectedEvidenceNames, [
+  'candidate-binding.json', 'database-reconciliation.json', 'rollback-baseline.json'
+]);
+
+await overwriteEvidence('database-reconciliation.json', databaseEvidence);
+const manifestedFiles = [
+  'candidate-binding.json', 'rollback-baseline.json', 'publish-intent.json',
+  'publish-attempt.json', 'publish-reconciliation.json', 'deploy-receipt.json',
+  'database-reconciliation.json', 'fixture-evidence.json', 'uat-evidence.json'
+];
+const writeEvidenceManifest = async () => {
+  const entries = [];
+  for (const name of manifestedFiles) {
+    const bytes = await fs.readFile(evidencePath(name));
+    entries.push({ name, size: bytes.length, sha256: sha256(bytes) });
+  }
+  await overwriteEvidence('evidence-manifest.json', {
+    schemaVersion: 1, kind: 'cnyos_exact_staging_evidence_manifest', status: 'PASS',
+    stagingOnly: true, productionAuthorized: false, controller: binding.controller,
+    source: { commit, tree }, deployId: candidateDeployId, rollbackDeployId: rollback,
+    evidence: entries
+  });
+};
+await writeEvidenceManifest();
+
+const terminal = await finalizeExactStagingEvidence(publishConfig, {
+  now: () => '2026-10-13T00:12:00.000Z'
+});
+assert.equal(terminal.status, 'PASS');
+assert.equal(terminal.evidenceSetValid, true);
+assert.equal(terminal.controller.commit, controllerCommit);
+await fs.rm(evidencePath('terminal-evidence.json'));
+
+const validEvidence = new Map();
+for (const name of [...manifestedFiles, 'evidence-manifest.json']) {
+  validEvidence.set(name, await readEvidence(name));
+}
+const expectFinalizationTamperRejected = async (name, mutate, expected, {
+  rebuildManifest = true
+} = {}) => {
+  const original = validEvidence.get(name);
+  await overwriteEvidence(name, mutate(structuredClone(original)));
+  if (rebuildManifest && name !== 'evidence-manifest.json') await writeEvidenceManifest();
+  await assert.rejects(() => finalizeExactStagingEvidence(publishConfig), expected);
+  await overwriteEvidence(name, original);
+  await writeEvidenceManifest();
+};
+
+for (const mutate of [
+  value => ({ ...value, target: { ...value.target, origin: 'https://cnyos.cloud' } }),
+  value => ({ ...value, result: 'FABRICATED_PASS' }),
+  value => ({ ...value, status: 'FABRICATED' }),
+  value => ({ ...value, normalizedDeployId: rollback }),
+  value => ({ ...value, cliOutcome: 'EXIT_ZERO' }),
+  value => ({ ...value, reconciledAt: 'not-an-iso-timestamp' })
+]) {
+  await expectFinalizationTamperRejected('publish-reconciliation.json', mutate,
+    /CNYOS_EXACT_STAGING_RECONCILIATION_EVIDENCE_INVALID/);
+}
+
+for (const mutate of [
+  value => ({ ...value, productionAuthorized: true }),
+  value => ({ ...value, source: { ...value.source, tree: '8'.repeat(40) } }),
+  value => ({ ...value, artifact: { ...value.artifact,
+    databaseTreeSha256: '8'.repeat(64) } }),
+  value => ({ ...value, phases: { ...value.phases,
+    auditApply: { ...value.phases.auditApply, exitCode: 1 } } })
+]) {
+  await expectFinalizationTamperRejected('database-reconciliation.json', mutate,
+    /CNYOS_EXACT_STAGING_DATABASE_RECONCILIATION_INVALID/);
+}
+
+for (const mutate of [
+  value => ({ ...value, kind: 'fabricated_uat' }),
+  value => ({ ...value, source: { ...value.source, commit: '8'.repeat(40) } }),
+  value => ({ ...value, deployment: { ...value.deployment, deployId: 'e'.repeat(24),
+    exactDeployOrigin:
+      `https://${'e'.repeat(24)}--${EXACT_STAGING_TARGET.netlifySiteName}.netlify.app` } }),
+  value => ({ ...value, target: { ...value.target, siteId: '0'.repeat(36) } }),
+  value => ({ ...value, controller: { ...value.controller, commit: '8'.repeat(40) } }),
+  value => ({ ...value, journey: { ...value.journey, runId: 'SYNTH-FABRICATED' } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, hn: 'SYNTHETIC-E2E-TEST'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, hn: 'CHANANYASTG-000000001'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, syntheticRunSuffix: 'BADRUNID'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, hnGeneratedByServer: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, clinicId: '00000000-0000-4000-8000-000000000000'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, patient: {
+    ...value.journey.patient, paymentRight: 'CASH'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, actorIds: {
+    ...value.journey.actorIds,
+    pharmacy_dispenser: value.journey.actorIds.pharmacy_reviewer
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, opdBrowserProof: {
+    ...value.journey.opdBrowserProof, saveReloadAmend: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult, senderActorId: value.journey.actorIds.attending
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult, id: 'not-a-uuid'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult, version: 3
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult,
+    wrongRole: { ...value.journey.consult.wrongRole, noMutationReadbackVerified: false }
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult,
+    eventTypes: value.journey.consult.eventTypes.slice(0, -1)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, consult: {
+    ...value.journey.consult,
+    eventDetails: value.journey.consult.eventDetails.map((event, index) => index === 2
+      ? { ...event, resultingVersion: 99 } : event)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, status: 'admitted'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, id: 'not-a-uuid'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, version: 7
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    placementAndDischargeActorId: value.journey.actorIds.attending
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    wrongRole: { ...value.journey.admission.wrongRole, expectedError: 'IPD_VERSION_STALE' }
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    entryTypes: value.journey.admission.entryTypes.filter(type => type !== 'discharge_summary')
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission, receptionClinicalEntriesAndActorIdsRedacted: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    entryDetails: value.journey.admission.entryDetails.map((entry, index) => index === 3
+      ? { ...entry, authorId: value.journey.actorIds.source_practitioner } : entry)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admission: {
+    ...value.journey.admission,
+    eventDetails: value.journey.admission.eventDetails.map((event, index) => index === 4
+      ? { ...event, clinicalEntryId: value.journey.admission.entryDetails[4].entryId } : event)
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, pharmacy: {
+    ...value.journey.pharmacy, separated: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, billing: {
+    ...value.journey.billing, invoiceStatus: 'open'
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin, separatelyAuthenticated: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin, auditActorAndTransitionReadbackVerified: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin, auditClinicalPayloadRedacted: false
+  } } }),
+  value => ({ ...value, journey: { ...value.journey, admin: {
+    ...value.journey.admin,
+    auditActionCounts: { ...value.journey.admin.auditActionCounts,
+      transition_ipd_admission: 3 }
+  } } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    dispatched: value.mutationBudget.dispatched - 1,
+    records: value.mutationBudget.records.slice(0, -1)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 32
+      ? { ...record, status: 200 } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 37
+      ? { ...record, uncertain: true } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 45
+      ? { ...record, authority: 'billing' } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 50
+      ? { ...record, resource: '/rest/v1/rpc/wrong' } : record)
+  } }),
+  value => ({ ...value, mutationBudget: {
+    ...value.mutationBudget,
+    records: value.mutationBudget.records.map((record, index) => index === 0
+      ? { ...record, ordinal: 2 } : record)
+  } })
+]) {
+  await expectFinalizationTamperRejected('uat-evidence.json', mutate,
+    /CNYOS_EXACT_STAGING_(?:UAT_EVIDENCE|DEPLOY_RECEIPT)_INVALID/);
+}
+
+await expectFinalizationTamperRejected('fixture-evidence.json', value => ({
+  ...value, patient: { ...value.patient, id: '77777777-7777-4777-a777-777777777777' }
+}), /CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID/);
+for (const mutatePatient of [
+  patient => ({ ...patient, hn: 'CHANANYASTG-000000001' }),
+  patient => ({ ...patient, syntheticRunSuffix: 'BADRUNID' }),
+  patient => ({ ...patient, hnGeneratedByServer: false }),
+  patient => ({ ...patient, clinicId: '00000000-0000-4000-8000-000000000000' }),
+  patient => ({ ...patient, paymentRight: 'CASH' })
+]) {
+  await expectFinalizationTamperRejected('fixture-evidence.json', value => ({
+    ...value, patient: mutatePatient(value.patient)
+  }), /CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID/);
+}
+await expectFinalizationTamperRejected('fixture-evidence.json', value => ({
+  ...value, accounts: { ...value.accounts, admin: {
+    ...value.accounts.admin, clinicRole: 'viewer'
+  } }
+}), /CNYOS_EXACT_STAGING_FIXTURE_EVIDENCE_INVALID/);
+await expectFinalizationTamperRejected('deploy-receipt.json', value => ({
+  ...value, source: { ...value.source, tree: '8'.repeat(40) }
+}), /CNYOS_EXACT_STAGING_DEPLOY_RECEIPT_INVALID/);
+await expectFinalizationTamperRejected('publish-attempt.json', value => ({
+  ...value, completedAt: '2099-01-01T00:00:00.000Z'
+}), /CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID/, { rebuildManifest: false });
+await expectFinalizationTamperRejected('evidence-manifest.json', value => ({
+  ...value,
+  evidence: value.evidence.map((entry, index) => index === 0
+    ? { ...entry, sha256: '0'.repeat(64) } : entry)
+}), /CNYOS_EXACT_STAGING_EVIDENCE_MANIFEST_INVALID/, { rebuildManifest: false });
+
+const terminalAfterAdversarialChecks = await finalizeExactStagingEvidence(publishConfig, {
+  now: () => '2026-10-13T00:13:00.000Z'
+});
+assert.equal(terminalAfterAdversarialChecks.status, 'PASS');
+assert.equal(terminalAfterAdversarialChecks.evidenceSetValid, true);
 
 process.stdout.write('Exact staging release contracts passed.\n');

@@ -33,10 +33,11 @@ export const EXACT_STAGING_WORKFLOW_PATH =
 export const EXACT_STAGING_ENVIRONMENT = 'cnyos-staging-publish';
 export const EXACT_STAGING_SECRET_NAMES = Object.freeze([
   'CNYOS_STAGING_NETLIFY_AUTH_TOKEN',
+  'CNYOS_STAGING_DATABASE_URL',
   'CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY',
-  'CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY',
   'CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD'
 ]);
+export const EXACT_STAGING_SYNTHETIC_HN_PATTERN = '^CHANANYASTG-[0-9]{8}$';
 export const EXACT_STAGING_FUNCTION_ENVIRONMENT = Object.freeze({
   SUPABASE_URL: EXACT_STAGING_TARGET.supabaseOrigin,
   CNYOS_OWNER_EXPECTED_PROJECT_REF: EXACT_STAGING_TARGET.supabaseProjectRef,
@@ -57,7 +58,7 @@ export const EXACT_STAGING_LIMITS = Object.freeze({
   authUsers: 7,
   syntheticCases: 1,
   browserOpdWrites: 2,
-  totalMutations: 48,
+  totalMutations: 51,
   requestRetries: 0,
   requestTimeoutMs: 20_000,
   uatTimeoutMs: 25 * 60_000
@@ -72,6 +73,13 @@ const REQUIRED_RUNTIME_FILES = Object.freeze([
   'index.html', 'login.html', 'auth-callback.html', 'owner-control.html',
   'clinical-v3.html', 'pharmacy.html', 'app.js', 'app.css', 'auth-config.js',
   'tenant-config.js', 'brand-config.js', 'deploy-manifest.json'
+]);
+export const EXACT_STAGING_DATABASE_FILES = Object.freeze([
+  '20261013230000_staging_forward_reconciliation_ce4cee52.psql',
+  '20261013230000_staging_forward_reconciliation_ce4cee52.sql',
+  '20261013230000_staging_forward_reconciliation_manifest.json',
+  '20261013230000_staging_forward_reconciliation_verify.sql',
+  '20261017005000_audit_logs_governance_admin_read.sql'
 ]);
 
 export class ExactStagingReleaseError extends Error {
@@ -117,6 +125,8 @@ export function canonicalJson(value) {
 }
 
 export function loadExactStagingConfig(env = process.env) {
+  const controllerCommit = exact(env.CNYOS_EXPECTED_CONTROLLER_COMMIT, SHA40,
+    'CNYOS_EXACT_STAGING_CONTROLLER_COMMIT_INVALID');
   const appCommit = exact(env.CNYOS_EXPECTED_SOURCE_COMMIT, SHA40,
     'CNYOS_EXACT_STAGING_SOURCE_COMMIT_INVALID');
   const appTree = exact(env.CNYOS_EXPECTED_SOURCE_TREE, SHA40,
@@ -137,6 +147,7 @@ export function loadExactStagingConfig(env = process.env) {
     fail('CNYOS_EXACT_STAGING_DIRECTORY_INVALID');
   }
   return Object.freeze({
+    controllerCommit,
     appCommit,
     appTree,
     rollbackDeployId,
@@ -146,6 +157,8 @@ export function loadExactStagingConfig(env = process.env) {
     distDirectory: path.join(artifactDirectory, 'dist'),
     functionsDirectory: path.join(artifactDirectory, 'functions'),
     functionManifestPath: path.join(artifactDirectory, 'function-input-manifest.json'),
+    databaseDirectory: path.join(artifactDirectory, 'database'),
+    databaseManifestPath: path.join(artifactDirectory, 'database-input-manifest.json'),
     workDirectory,
     uploadDirectory: path.join(workDirectory, 'upload'),
     privateDirectory: path.join(workDirectory, 'private'),
@@ -200,11 +213,23 @@ function assertStagingDeployManifest(manifest, config) {
 }
 
 export async function verifyExactStagingArtifact(config) {
+  const artifactStatus = await fs.lstat(config.artifactDirectory).catch(() => null);
   const distStatus = await fs.lstat(config.distDirectory).catch(() => null);
   const functionStatus = await fs.lstat(config.functionsDirectory).catch(() => null);
-  if (!distStatus?.isDirectory() || distStatus.isSymbolicLink() ||
-    !functionStatus?.isDirectory() || functionStatus.isSymbolicLink()) {
+  const functionManifestStatus = await fs.lstat(config.functionManifestPath).catch(() => null);
+  const databaseStatus = await fs.lstat(config.databaseDirectory).catch(() => null);
+  const databaseManifestStatus = await fs.lstat(config.databaseManifestPath).catch(() => null);
+  if (!artifactStatus?.isDirectory() || artifactStatus.isSymbolicLink() ||
+    !distStatus?.isDirectory() || distStatus.isSymbolicLink() ||
+    !functionStatus?.isDirectory() || functionStatus.isSymbolicLink() ||
+    !databaseStatus?.isDirectory() || databaseStatus.isSymbolicLink()) {
     fail('CNYOS_EXACT_STAGING_ARTIFACT_DIRECTORY_INVALID');
+  }
+  if (!functionManifestStatus?.isFile() || functionManifestStatus.isSymbolicLink()) {
+    fail('CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID');
+  }
+  if (!databaseManifestStatus?.isFile() || databaseManifestStatus.isSymbolicLink()) {
+    fail('CNYOS_EXACT_STAGING_DATABASE_MANIFEST_INVALID');
   }
   const { value: deployManifest, bytes: deployBytes } = await readJson(
     path.join(config.distDirectory, 'deploy-manifest.json'),
@@ -247,6 +272,7 @@ export async function verifyExactStagingArtifact(config) {
     !Array.isArray(functionManifest.files) || functionManifest.files.length !== functionFiles.length ||
     functionManifest.fileCount !== functionFiles.length ||
     functionManifest?.source?.requestedRef !== config.appCommit ||
+    functionManifest?.source?.resolvedRefObjectId !== config.appCommit ||
     !SHA256.test(String(functionManifest.manifestSha256 || '')) ||
     !SHA256.test(String(functionManifest.treeSha256 || ''))) {
     fail('CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_INVALID');
@@ -269,16 +295,96 @@ export async function verifyExactStagingArtifact(config) {
       functionManifest.manifestSha256) {
     fail('CNYOS_EXACT_STAGING_FUNCTION_MANIFEST_DIGEST_INVALID');
   }
+  const { value: databaseManifest, bytes: databaseManifestBytes } = await readJson(
+    config.databaseManifestPath, 'CNYOS_EXACT_STAGING_DATABASE_MANIFEST_INVALID');
+  const databaseFiles = await safeFiles(config.databaseDirectory);
+  if (databaseManifest.schemaVersion !== 1 ||
+    databaseManifest.artifactType !== 'cnyos-staging-database-inputs' ||
+    databaseManifest?.source?.requestedRef !== config.appCommit ||
+    databaseManifest?.source?.resolvedRefObjectId !== config.appCommit ||
+    databaseManifest?.source?.sourceTreeObjectId !== config.appTree ||
+    databaseManifest?.target?.projectRef !== EXACT_STAGING_TARGET.supabaseProjectRef ||
+    databaseManifest?.target?.systemIdentifier !== '7666007964130682852' ||
+    databaseManifest?.reconciliation?.legacyBundleSourceTree !==
+      'ce4cee52f1ad7fed574cadf8a5e62e0f181d0d67' ||
+    databaseManifest?.reconciliation?.finalAppTree !== config.appTree ||
+    databaseManifest?.reconciliation?.generatorCheckRequired !== true ||
+    databaseManifest?.reconciliation?.auditMigrationIncluded !== true ||
+    databaseManifest?.safety?.stagingOnly !== true ||
+    databaseManifest?.safety?.productionAuthorized !== false ||
+    databaseManifest?.safety?.resetAllowed !== false ||
+    databaseManifest?.safety?.containsPatientData !== false ||
+    !Array.isArray(databaseManifest.files) ||
+    databaseManifest.files.length !== EXACT_STAGING_DATABASE_FILES.length ||
+    databaseManifest.fileCount !== databaseManifest.files.length ||
+    !SHA256.test(String(databaseManifest.manifestSha256 || '')) ||
+    canonicalJson(databaseFiles) !== canonicalJson([...EXACT_STAGING_DATABASE_FILES].sort()) ||
+    canonicalJson(databaseManifest.files.map(item => item?.path)) !==
+      canonicalJson([...EXACT_STAGING_DATABASE_FILES].sort())) {
+    fail('CNYOS_EXACT_STAGING_DATABASE_MANIFEST_INVALID');
+  }
+  for (const item of databaseManifest.files) {
+    if (!plainObject(item) || !Number.isSafeInteger(item.size) || item.size < 1 ||
+      item.mode !== '100644' || !SHA256.test(String(item.sha256 || ''))) {
+      fail('CNYOS_EXACT_STAGING_DATABASE_INTEGRITY_INVALID');
+    }
+    const content = await fs.readFile(path.join(config.databaseDirectory, item.path));
+    if (content.length !== item.size || sha256(content) !== item.sha256) {
+      fail('CNYOS_EXACT_STAGING_DATABASE_INTEGRITY_INVALID');
+    }
+  }
+  if (sha256(Buffer.from(JSON.stringify(databaseManifest.files))) !==
+      databaseManifest.manifestSha256) {
+    fail('CNYOS_EXACT_STAGING_DATABASE_MANIFEST_DIGEST_INVALID');
+  }
+  const { value: reconciliationManifest } = await readJson(path.join(config.databaseDirectory,
+    '20261013230000_staging_forward_reconciliation_manifest.json'),
+  'CNYOS_EXACT_STAGING_DATABASE_RECONCILIATION_MANIFEST_INVALID');
+  const databaseEntries = new Map(databaseManifest.files.map(item => [item.path, item]));
+  if (reconciliationManifest.version !== '20261013230000' ||
+    reconciliationManifest.stagingProjectRef !== EXACT_STAGING_TARGET.supabaseProjectRef ||
+    reconciliationManifest.productionProjectRef !== 'qptxnrldzzinlcabudjv' ||
+    reconciliationManifest.expectedSystemIdentifier !== '7666007964130682852' ||
+    reconciliationManifest.historicalLedgerReplayed !== false ||
+    reconciliationManifest.executeSqlExplicitTransactionRollbackProven !== true ||
+    reconciliationManifest.artifact !==
+      '20261013230000_staging_forward_reconciliation_ce4cee52.sql' ||
+    reconciliationManifest.wrapper !==
+      '20261013230000_staging_forward_reconciliation_ce4cee52.psql' ||
+    reconciliationManifest.verifier !==
+      '20261013230000_staging_forward_reconciliation_verify.sql' ||
+    databaseEntries.get(reconciliationManifest.artifact)?.sha256 !==
+      reconciliationManifest.artifactSha256 ||
+    databaseEntries.get(reconciliationManifest.wrapper)?.sha256 !==
+      reconciliationManifest.wrapperSha256 ||
+    databaseEntries.get(reconciliationManifest.verifier)?.sha256 !==
+      reconciliationManifest.verifierSha256) {
+    fail('CNYOS_EXACT_STAGING_DATABASE_RECONCILIATION_MANIFEST_INVALID');
+  }
+  const observedArtifact = await safeFiles(config.artifactDirectory);
+  const expectedArtifact = [
+    ...observedDist.map(name => `dist/${name}`),
+    ...functionFiles.map(name => `functions/${name}`),
+    ...databaseFiles.map(name => `database/${name}`),
+    'function-input-manifest.json', 'database-input-manifest.json'
+  ].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+  if (canonicalJson(observedArtifact) !== canonicalJson(expectedArtifact)) {
+    fail('CNYOS_EXACT_STAGING_ARTIFACT_CLOSED_WORLD_INVALID');
+  }
   const artifact = Object.freeze({
     source: Object.freeze({ commit: config.appCommit, tree: config.appTree }),
     deployManifestSha256: sha256(deployBytes),
     runtimeManifestSha256: sha256(runtimeBytes),
     functionManifestSha256: sha256(functionManifestBytes),
     functionTreeSha256: functionManifest.treeSha256,
+    databaseManifestSha256: sha256(databaseManifestBytes),
+    databaseTreeSha256: databaseManifest.manifestSha256,
     runtimeFileCount: runtimeManifest.fileCount,
-    functionFileCount: functionManifest.fileCount
+    functionFileCount: functionManifest.fileCount,
+    databaseFileCount: databaseManifest.fileCount
   });
-  return Object.freeze({ artifact, deployManifest, runtimeManifest, functionManifest });
+  return Object.freeze({ artifact, deployManifest, runtimeManifest, functionManifest,
+    databaseManifest, reconciliationManifest });
 }
 
 async function responseJson(response, code, maximum = 2 * 1024 * 1024) {

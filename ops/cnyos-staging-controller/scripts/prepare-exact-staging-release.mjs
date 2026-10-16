@@ -28,6 +28,11 @@ const binding = {
   kind: 'cnyos_exact_staging_candidate_binding',
   stagingOnly: true,
   productionAuthorized: false,
+  controller: {
+    repository: 'apisarit/cnyos-staging-deployment-control',
+    commit: config.controllerCommit,
+    workflowPath: '.github/workflows/cnyos-exact-staging-deploy-uat.yml'
+  },
   source: { commit: config.appCommit, tree: config.appTree },
   target: {
     siteId: config.target.netlifySiteId,
@@ -49,5 +54,7 @@ await writeFresh0600(path.join(config.privateDirectory, 'artifact-verification.j
   ...binding,
   deployManifest: verified.deployManifest,
   runtimeManifest: verified.runtimeManifest,
-  functionManifest: verified.functionManifest
+  functionManifest: verified.functionManifest,
+  databaseManifest: verified.databaseManifest,
+  databaseReconciliationManifest: verified.reconciliationManifest
 }, secrets);

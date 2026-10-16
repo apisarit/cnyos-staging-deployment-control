@@ -1,10 +1,15 @@
 # Exact staging deploy and role-separated UAT
 
 `cnyos-exact-staging-deploy-uat.yml` is a manual, staging-only release path.
-It checks out one exact public application commit, verifies its tree, builds the
-connected staging artifact, publishes that artifact to the fixed isolated
-staging site, and runs one bounded synthetic journey against the immutable
-deploy URL and the canonical staging URL.
+It uses two fresh GitHub-hosted runners. The first runner checks out one exact
+private application commit with a repository-scoped read-only source token,
+verifies its tree, runs its contracts, builds a
+closed-world staging artifact, and uploads it without access to the protected
+Environment or its secrets. The second runner checks out only the exact trusted
+controller, downloads that artifact by immutable artifact ID, re-verifies its
+complete content before a protected secret is scoped, publishes it to the fixed
+isolated staging site, and runs one bounded synthetic journey against the
+immutable deploy URL and the canonical staging URL.
 
 This workflow does **not** authorize or deploy Production. The target is closed
 in controller code and workflow YAML:
@@ -20,6 +25,8 @@ origin, project, clinic, and deployment class are not dispatch inputs.
 
 ## Manual inputs
 
+- `controller_commit`: approved 40-character commit currently at controller
+  `main`; the run rejects a stale or different workflow/controller SHA
 - `app_commit`: reviewed 40-character application commit
 - `app_tree`: reviewed 40-character tree for that commit
 - `rollback_deploy_id`: currently published, known-good 24-character staging
@@ -27,16 +34,44 @@ origin, project, clinic, and deployment class are not dispatch inputs.
 - `run_reference`: non-clinical opaque reference used only to derive unique
   synthetic identities
 
+This private repository does not currently expose a protected `main` ref. The
+admission contract therefore binds the dispatch to the repository owner actor,
+`refs/heads/main`, attempt 1, the exact supplied controller commit, the workflow
+SHA, and the checked-out controller HEAD. Protected credentials remain scoped
+to the `cnyos-staging-publish` Environment on the second runner only. No branch
+name or “latest” commit is accepted as application release identity: the
+reviewed application commit and tree must still match byte-for-byte. The upload
+action exposes an immutable artifact ID and transport digest; the protected job
+downloads that exact ID, re-fetches its archive with a read-only Actions token,
+and fails closed unless the raw archive SHA-256 equals the upload digest. It
+then independently proves content identity from the closed-world runtime,
+function, and database manifests. Before any site publish it applies and
+verifies the reviewed forward-only schema reconciliation and final-tree audit
+repair on the fixed staging database. Candidate repository scripts do not run
+on the protected runner.
+
 ## Protected secret names
 
 - `CNYOS_STAGING_NETLIFY_AUTH_TOKEN`
+- `CNYOS_STAGING_DATABASE_URL`
 - `CNYOS_STAGING_SUPABASE_SERVICE_ROLE_KEY`
-- `CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY`
 - `CNYOS_STAGING_SYNTHETIC_PRACTITIONER_PASSWORD`
 
-The last secret is the existing staging-only password. The controller creates
-seven distinct emails and role assignments from the run reference; it never
-prints the password or writes it to retained evidence.
+The controller repository also requires the repository secret
+`CNYOS_APP_SOURCE_READ_TOKEN`. It must be a short-lived fine-grained token whose
+resource owner is `apisarit`, whose only selected repository is
+`chananya-clinical-wellness-os`, and whose only repository permission is
+`Contents: Read`. The workflow references it exactly once as the pinned
+`actions/checkout` token. It is not placed in job or step environment, is not
+available to candidate commands, and checkout uses `persist-credentials: false`.
+Prefer a one-repository GitHub App installation token when that boundary is
+available; the fine-grained token is the reviewed bounded staging bridge.
+
+`CNYOS_STAGING_SUPABASE_PUBLISHABLE_KEY` is public browser configuration and is
+supplied only as a repository variable, never as an Environment secret. The
+last protected secret is the existing staging-only password. The controller
+creates seven distinct emails and role assignments from the run reference; it
+never prints the password or writes it to retained evidence.
 
 ## Bounded proof
 
@@ -48,14 +83,53 @@ dispenser, billing, and administrator accounts. It proves:
 -> consult -> IPD admission/handoff -> pharmacy review -> separate dispense
 -> billing/payment`
 
-Limits are seven accounts, one case, two browser OPD writes, 48 total
+Limits are seven accounts, one case, two browser OPD writes, 51 total
 mutations, zero write retries, 20-second request timeouts, and a 25-minute UAT
 budget. Patient national ID and phone are absent. Synthetic markers are present
 on both auth metadata sets and retained evidence contains only account IDs and
-email hashes.
+email hashes. The database must generate the patient HN in the exact
+`CHANANYASTG-########` form. UAT and fixture evidence both bind that server HN,
+the fixed clinic and `SYNTHETIC-E2E` payment scope, and the final eight
+characters derived from the hashed run ID; fabricated HNs or suffixes fail the
+terminal evidence check.
 
 The rollback baseline is observed before publication and retained with the
 candidate binding, exact deploy receipt, fixture proof, UAT proof, and evidence
 manifest. A failed or uncertain write stops without retry. The workflow does
 not auto-promote any Production environment and does not auto-rollback because
 rollback is a separate externally authorized mutation.
+
+## Database reconciliation gate
+
+The database URL must identify only Supabase project
+`hsmnjwxurlmsizndjlun`, through its direct PostgreSQL 17 endpoint or fixed
+ap-southeast-1 session pooler. The server system identifier must be
+`7666007964130682852`; Production project `qptxnrldzzinlcabudjv` is denied.
+The gate performs no reset, reads no patient rows, and does not fabricate
+migration-ledger history. Any apply, identity, policy, ACL, receipt, or verify
+failure stops before Netlify publish and UAT.
+
+The legacy five-migration bundle retains its original source-tree provenance.
+An outer input manifest binds its checked bytes and the separate audit-policy
+migration to the dispatched final app commit/tree, while build admission runs
+the bundle generator with `--check` against that exact checkout. The audit
+repair is a documented second transaction with a distinct durable receipt
+bound to the runtime app identity and audit migration SHA. Reruns must reverify
+the exact stored forward receipt before resuming or accepting the audit phase.
+Before the first forward apply, the controller performs a catalog-only marker
+probe. A clean zero-marker baseline proceeds directly. The one historically
+known ledgerless partial replay is accepted only at its exact four-marker
+state, with no reconciliation receipt; the vendored cleanup artifact
+(`d9c89e85d740b8d5fc0d7542d033688dca090f07083f8dd41d1c84c6821e7d15`)
+must first complete inside a rolled-back preflight transaction before the same
+single-statement guarded cleanup is applied. Any other marker state, changed
+cleanup bytes, failed guard, or existing unmatched receipt fails closed. The
+probe and cleanup inspect only catalog/ledger state and never read patient
+rows, reset the database, or fabricate a migration receipt.
+There is no automatic database rollback; failure requires reviewed forward
+remediation.
+
+Current prepared identity: app commit
+`e5f78caa09cc410b95b2f14c06d1fd6aded58994`, tree
+`3d3b926f0ba11956670916daa7428fc6d3c4c48d`. These values document the current
+packet and do not authorize Production.
